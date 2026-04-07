@@ -1,16 +1,16 @@
 {
   "name": "@cherrydotfun/miniapp-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SDK for building mini-apps embedded in Cherry messenger",
   "license": "MIT",
   "author": "Cherry.fun <dev@cherry.fun>",
-  "homepage": "https://github.com/nicefun/cherry-miniapp-sdk#readme",
+  "homepage": "https://github.com/cherrydotfun/miniapp-sdk#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nicefun/cherry-miniapp-sdk.git"
+    "url": "git+https://github.com/cherrydotfun/miniapp-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/nicefun/cherry-miniapp-sdk/issues"
+    "url": "https://github.com/cherrydotfun/miniapp-sdk/issues"
   },
   "keywords": [
     "cherry",
@@ -39,6 +39,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "LICENSE",
     "README.md"
   ],

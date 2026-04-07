@@ -180,6 +180,10 @@ The SDK communicates with Cherry via `postMessage`. The protocol is versioned (`
 | `cherry:response` | Host → App | Operation result |
 | `cherry:event` | Host → App | Lifecycle events |
 
+## AI-Assisted Integration
+
+This package includes a [Claude Code / Codex skill](./skills/README.md) that automates SDK integration into existing web3 apps. After installing the SDK, copy the skill to your AI assistant and say "Integrate Cherry Mini-App SDK" — it will analyze your codebase and guide you step by step.
+
 ## License
 
 MIT
