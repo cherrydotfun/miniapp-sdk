@@ -1,0 +1,72 @@
+{
+  "name": "@cherrydotfun/miniapp-sdk",
+  "version": "0.1.0",
+  "description": "SDK for building mini-apps embedded in Cherry messenger",
+  "license": "MIT",
+  "author": "Cherry.fun <dev@cherry.fun>",
+  "homepage": "https://github.com/nicefun/cherry-miniapp-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nicefun/cherry-miniapp-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nicefun/cherry-miniapp-sdk/issues"
+  },
+  "keywords": [
+    "cherry",
+    "miniapp",
+    "solana",
+    "wallet",
+    "messaging",
+    "embedded",
+    "sdk"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.mjs",
+      "require": "./dist/react/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@solana/wallet-adapter-base": ">=0.9.0",
+    "@solana/web3.js": ">=1.90.0",
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "jose": "^5.0.0"
+  },
+  "devDependencies": {
+    "@solana/wallet-adapter-base": "^0.9.23",
+    "@solana/web3.js": "^1.98.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
+  }
+}
