@@ -1,7 +1,7 @@
 import * as jose from 'jose';
 import type { LaunchTokenPayload } from './types';
 
-const DEFAULT_JWKS_URL = 'https://api.cherry.fun/.well-known/jwks.json';
+const DEFAULT_JWKS_URL = 'https://chat.cherry.fun/.well-known/jwks.json';
 
 export async function verifyLaunchToken(
   token: string,

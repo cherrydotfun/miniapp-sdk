@@ -34,6 +34,11 @@ export function App() {
   const [navResult, setNavResult] = useState<string | null>(null);
   const [navError, setNavError] = useState<string | null>(null);
 
+  // Verify token state
+  const [verifyResult, setVerifyResult] = useState<string | null>(null);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+
   if (error) {
     return (
       <div style={styles.container}>
@@ -128,6 +133,29 @@ export function App() {
     }
   };
 
+  const handleVerifyToken = async () => {
+    setVerifyLoading(true);
+    setVerifyError(null);
+    setVerifyResult(null);
+    try {
+      const res = await fetch('http://localhost:3456/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: launchToken }),
+      });
+      const data = await res.json();
+      if (data.verified) {
+        setVerifyResult(`Verified: ${data.payload.sub} in ${data.payload.room_id}`);
+      } else {
+        setVerifyError(`Rejected: ${data.error}`);
+      }
+    } catch (err) {
+      setVerifyError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
   const truncate = (s: string, len = 8) =>
     s.length > len * 2 ? `${s.slice(0, len)}...${s.slice(-len)}` : s;
 
@@ -204,17 +232,27 @@ export function App() {
         {navError && <p style={styles.errorText}>{navError}</p>}
       </div>
 
-      {/* Launch Token */}
+      {/* Launch Token + Verification */}
       <div style={styles.card}>
-        <h2 style={styles.heading}>Launch Token (JWT)</h2>
+        <h2 style={styles.heading}>Launch Token Verification</h2>
         <div style={styles.tokenBox}>
           <code style={styles.tokenText}>
             {launchToken ? launchToken.slice(0, 80) + '...' : '—'}
           </code>
         </div>
         <p style={styles.hint}>
-          Send this token to your backend and verify via Cherry JWKS endpoint.
+          Sends the JWT to the example server (localhost:3456) which verifies
+          the signature against Cherry's JWKS endpoint.
         </p>
+        <ActionButton
+          label="Verify on Server"
+          loadingLabel="Verifying..."
+          loading={verifyLoading}
+          disabled={!launchToken}
+          onClick={handleVerifyToken}
+        />
+        {verifyResult && <ResultRow label="Result" value={verifyResult} />}
+        {verifyError && <p style={styles.errorText}>{verifyError}</p>}
       </div>
     </div>
   );
