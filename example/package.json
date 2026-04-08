@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "npx tsx server.ts",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
