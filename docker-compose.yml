@@ -1,7 +1,7 @@
 services:
   miniapp-example:
     build:
-      context: ..
+      context: .
       dockerfile: example/Dockerfile
     ports:
       - "8080:80"

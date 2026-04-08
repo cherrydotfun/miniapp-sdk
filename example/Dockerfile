@@ -11,19 +11,21 @@ FROM node:20-alpine AS frontend-build
 
 WORKDIR /app
 
-# Install SDK into node_modules manually (avoid file: symlink issues)
-COPY --from=sdk-build /sdk/dist/ ./node_modules/@cherrydotfun/miniapp-sdk/dist/
-COPY --from=sdk-build /sdk/package.json ./node_modules/@cherrydotfun/miniapp-sdk/package.json
-
 # Copy example source
 COPY example/package.json example/tsconfig.json example/vite.config.ts ./
 COPY example/src/ ./src/
 COPY example/index.html ./
 
-# Install deps, skip linking @cherrydotfun/miniapp-sdk (already in node_modules)
+# Install deps without the SDK link, add jose (SDK runtime dep)
 RUN sed -i '/"@cherrydotfun\/miniapp-sdk"/d' package.json && \
     npm install --legacy-peer-deps && \
-    npm run build
+    npm install jose
+
+# Copy full SDK package into node_modules (dist + package.json with exports)
+COPY --from=sdk-build /sdk/dist/ ./node_modules/@cherrydotfun/miniapp-sdk/dist/
+COPY --from=sdk-build /sdk/package.json ./node_modules/@cherrydotfun/miniapp-sdk/package.json
+
+RUN npm run build
 
 # ---- Stage 3: Runtime ----
 FROM node:20-alpine
