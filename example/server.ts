@@ -9,17 +9,19 @@
  */
 
 import { createServer } from 'node:http';
-import { verifyLaunchToken } from '@cherrydotfun/miniapp-sdk';
+import * as jose from 'jose';
 
 const PORT = parseInt(process.env.PORT || '3456', 10);
 const APP_ID = process.env.APP_ID || 'example-app';
-const JWKS_URL = process.env.JWKS_URL || 'http://localhost:3000/.well-known/jwks.json';
+const JWKS_URL = process.env.JWKS_URL || 'https://chat.cherry.fun/.well-known/jwks.json';
 
 function log(label: string, data: unknown) {
   const time = new Date().toLocaleTimeString('en-US', { hour12: false });
   console.log(`\n[${time}] ${label}`);
   console.log(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
 }
+
+const jwks = jose.createRemoteJWKSet(new URL(JWKS_URL));
 
 const server = createServer(async (req, res) => {
   // CORS
@@ -48,10 +50,13 @@ const server = createServer(async (req, res) => {
     log('Received token', token.slice(0, 60) + '...');
 
     try {
-      const payload = await verifyLaunchToken(token, {
-        expectedAppId: APP_ID,
-        jwksUrl: JWKS_URL,
+      const { payload } = await jose.jwtVerify(token, jwks, {
+        algorithms: ['RS256'],
       });
+
+      if (payload.app_id !== APP_ID) {
+        throw new Error(`Token app_id mismatch: expected ${APP_ID}, got ${payload.app_id}`);
+      }
 
       log('Token VERIFIED', {
         wallet: payload.sub,
@@ -60,8 +65,8 @@ const server = createServer(async (req, res) => {
         origin: payload.origin,
         user: payload.user,
         room: payload.room,
-        issuedAt: new Date(payload.iat * 1000).toISOString(),
-        expiresAt: new Date(payload.exp * 1000).toISOString(),
+        issuedAt: new Date((payload.iat ?? 0) * 1000).toISOString(),
+        expiresAt: new Date((payload.exp ?? 0) * 1000).toISOString(),
         jti: payload.jti,
       });
 

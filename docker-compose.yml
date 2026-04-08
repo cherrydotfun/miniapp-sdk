@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: example/Dockerfile
     ports:
-      - "8080:80"
+      - "8088:80"
     environment:
       - APP_ID=${APP_ID:-example-app}
       - JWKS_URL=${JWKS_URL:-https://chat.cherry.fun/.well-known/jwks.json}

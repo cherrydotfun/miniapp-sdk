@@ -38,10 +38,8 @@ COPY example/nginx.conf /etc/nginx/http.d/default.conf
 # Frontend
 COPY --from=frontend-build /app/dist /usr/share/nginx/html
 
-# Backend
+# Backend (uses jose directly, no SDK dependency at runtime)
 WORKDIR /app
-COPY --from=sdk-build /sdk/dist/ ./node_modules/@cherrydotfun/miniapp-sdk/dist/
-COPY --from=sdk-build /sdk/package.json ./node_modules/@cherrydotfun/miniapp-sdk/package.json
 RUN echo '{"type":"module","dependencies":{"jose":"^5.0.0","tsx":"^4.0.0"}}' > package.json && \
     npm install
 COPY example/server.ts ./server.ts
