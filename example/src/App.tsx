@@ -138,7 +138,7 @@ export function App() {
     setVerifyError(null);
     setVerifyResult(null);
     try {
-      const res = await fetch('http://localhost:3456/api/verify', {
+      const res = await fetch('/api/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: launchToken }),

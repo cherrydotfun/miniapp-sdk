@@ -11,7 +11,7 @@
 import { createServer } from 'node:http';
 import { verifyLaunchToken } from '@cherrydotfun/miniapp-sdk';
 
-const PORT = 3456;
+const PORT = parseInt(process.env.PORT || '3456', 10);
 const APP_ID = process.env.APP_ID || 'example-app';
 const JWKS_URL = process.env.JWKS_URL || 'http://localhost:3000/.well-known/jwks.json';
 
