@@ -18,6 +18,13 @@ export function useCherryMiniApp(): UseCherryMiniAppResult {
   return { user, room, launchToken, isReady, error };
 }
 
+// ---- useCherryApp (access CherryMiniApp instance for kit signer etc.) ----
+
+export function useCherryApp() {
+  const { app } = useCherryMiniAppContext();
+  return app;
+}
+
 // ---- useCherryWallet ----
 
 export interface UseCherryWalletResult {

@@ -25,8 +25,5 @@ export { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bri
 // Main client
 export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from './client';
 
-// Wallet adapter
-export { CherryWalletAdapter, CherryWalletAdapterName } from './wallet-adapter';
-
 // Server-side token verification
 export { verifyLaunchToken } from './token';

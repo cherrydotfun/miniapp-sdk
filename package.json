@@ -1,6 +1,6 @@
 {
   "name": "@cherrydotfun/miniapp-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "SDK for building mini-apps embedded in Cherry messenger",
   "license": "MIT",
   "author": "Cherry.fun <dev@cherry.fun>",
@@ -35,6 +35,16 @@
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.mjs",
       "require": "./dist/react/index.js"
+    },
+    "./solana": {
+      "types": "./dist/solana/index.d.ts",
+      "import": "./dist/solana/index.mjs",
+      "require": "./dist/solana/index.js"
+    },
+    "./kit": {
+      "types": "./dist/kit/index.d.ts",
+      "import": "./dist/kit/index.mjs",
+      "require": "./dist/kit/index.js"
     }
   },
   "files": [
@@ -52,12 +62,14 @@
   "peerDependencies": {
     "@solana/wallet-adapter-base": ">=0.9.0",
     "@solana/web3.js": ">=1.90.0",
+    "@solana/signers": ">=2.0.0",
     "react": ">=18.0.0"
   },
   "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    }
+    "react": { "optional": true },
+    "@solana/wallet-adapter-base": { "optional": true },
+    "@solana/web3.js": { "optional": true },
+    "@solana/signers": { "optional": true }
   },
   "dependencies": {
     "jose": "^5.0.0"

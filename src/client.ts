@@ -1,5 +1,4 @@
 import { decodeJwt } from 'jose';
-import { Transaction, VersionedTransaction } from '@solana/web3.js';
 import { Bridge, getSharedBridge, destroySharedBridge } from './bridge';
 import type { BridgeEvent } from './bridge';
 import {
@@ -138,7 +137,7 @@ export class CherryMiniApp {
       get publicKey(): string | null {
         return self._publicKey;
       },
-      signTransaction(transaction: unknown): Promise<unknown> {
+      signTransaction(transaction: unknown): Promise<Uint8Array> {
         self.assertReady();
         return self.bridge
           .request('wallet.signTransaction', {
@@ -146,7 +145,7 @@ export class CherryMiniApp {
           })
           .then((result) => {
             const tx = (result as Record<string, unknown>)?.['transaction'] ?? result;
-            return deserializeTxFromBase64(tx as string, transaction);
+            return base64ToUint8Array(tx as string);
           });
       },
       signAndSendTransaction(transaction: unknown): Promise<string> {
@@ -238,31 +237,17 @@ export class CherryMiniApp {
 // ---- transaction helpers ----
 
 function serializeTxToBase64(tx: unknown): string {
-  if (isVersionedOrLegacyTx(tx)) {
+  if (typeof tx === 'string') return tx; // already base64
+  if (tx instanceof Uint8Array) return uint8ArrayToBase64(tx); // raw bytes
+  if (isSerializableTx(tx)) {
     return uint8ArrayToBase64((tx as { serialize(opts?: { requireAllSignatures?: boolean }): Uint8Array }).serialize({ requireAllSignatures: false }));
   }
-  throw new TypeError('Unknown transaction type: expected Transaction or VersionedTransaction');
+  throw new TypeError('Transaction must be a Uint8Array, base64 string, or have a serialize() method');
 }
 
-function deserializeTxFromBase64(base64: string, original: unknown): unknown {
-  // Re-use the same class as the original for deserialization
-  const bytes = base64ToUint8Array(base64);
-  if (isVersionedTx(original)) {
-    return VersionedTransaction.deserialize(bytes);
-  }
-  return Transaction.from(bytes);
-}
-
-function isVersionedOrLegacyTx(tx: unknown): boolean {
+function isSerializableTx(tx: unknown): boolean {
   if (typeof tx !== 'object' || tx === null) return false;
   return typeof (tx as Record<string, unknown>)['serialize'] === 'function';
-}
-
-function isVersionedTx(tx: unknown): boolean {
-  if (typeof tx !== 'object' || tx === null) return false;
-  // VersionedTransaction has a `message` with a `staticAccountKeys` array
-  const msg = (tx as Record<string, unknown>)['message'];
-  return typeof msg === 'object' && msg !== null && 'staticAccountKeys' in (msg as object);
 }
 
 function uint8ArrayToBase64(arr: Uint8Array): string {

@@ -83,7 +83,10 @@ export interface CherryNavigate {
 
 export interface CherryWallet {
   publicKey: string;
-  signTransaction(transaction: unknown): Promise<unknown>;
+  /** Signs a transaction. Accepts Transaction, VersionedTransaction, Uint8Array, or base64 string. Returns signed bytes. */
+  signTransaction(transaction: unknown): Promise<Uint8Array>;
+  /** Signs and sends a transaction. Returns signature string. */
   signAndSendTransaction(transaction: unknown): Promise<string>;
+  /** Signs an arbitrary message. Returns signature bytes. */
   signMessage(message: Uint8Array): Promise<Uint8Array>;
 }

@@ -2,30 +2,44 @@
 
 SDK for building mini-apps embedded in [Cherry](https://cherry.fun) messenger. Provides wallet integration, user/room context, and navigation — works in both WebView (mobile) and iframe (web).
 
+Supports both **@solana/web3.js** (legacy wallet-adapter) and **@solana/kit** (modern TransactionSigner).
+
 ## Install
 
 ```bash
 npm install @cherrydotfun/miniapp-sdk
 ```
 
-Peer dependencies:
+Peer dependencies — install only what you need:
 
 ```bash
-npm install @solana/wallet-adapter-base @solana/web3.js react
+# For @solana/web3.js (legacy wallet-adapter)
+npm install @solana/wallet-adapter-base @solana/web3.js
+
+# For @solana/kit (modern)
+npm install @solana/signers
+
+# For React hooks
+npm install react
 ```
 
-## Quick Start (React)
+## Package Exports
+
+| Entry Point | Description | Solana Dependency |
+|-------------|-------------|-------------------|
+| `@cherrydotfun/miniapp-sdk` | Core client, bridge, env detection, token verification | None |
+| `@cherrydotfun/miniapp-sdk/react` | React provider and hooks | None |
+| `@cherrydotfun/miniapp-sdk/solana` | CherryWalletAdapter for wallet-adapter ecosystem | `@solana/web3.js` + `@solana/wallet-adapter-base` |
+| `@cherrydotfun/miniapp-sdk/kit` | TransactionSigner for @solana/kit | None (structural typing) |
+
+## Quick Start — @solana/web3.js
 
 ```tsx
 import { CherryMiniAppProvider, useCherryMiniApp, useCherryWallet } from '@cherrydotfun/miniapp-sdk/react';
+import { CherryWalletAdapter } from '@cherrydotfun/miniapp-sdk/solana';
 
-function App() {
-  return (
-    <CherryMiniAppProvider>
-      <MyGame />
-    </CherryMiniAppProvider>
-  );
-}
+// Drop-in for @solana/wallet-adapter-react
+const wallets = [new CherryWalletAdapter()];
 
 function MyGame() {
   const { user, room, launchToken, isReady } = useCherryMiniApp();
@@ -37,15 +51,49 @@ function MyGame() {
     <div>
       <p>Welcome, {user.displayName}!</p>
       <p>Room: {room.title} ({room.memberCount} members)</p>
-      <p>Wallet: {publicKey}</p>
     </div>
   );
 }
 ```
 
+## Quick Start — @solana/kit
+
+```tsx
+import { CherryMiniApp } from '@cherrydotfun/miniapp-sdk';
+import { createCherrySigner } from '@cherrydotfun/miniapp-sdk/kit';
+
+const cherry = new CherryMiniApp();
+await cherry.init();
+
+// TransactionSigner — use with @solana/kit transaction builders
+const signer = createCherrySigner(cherry);
+
+// Sign transactions
+const [signed] = await signer.signTransactions([{ messageBytes, signatures: {} }]);
+
+// Sign messages
+const [signature] = await signer.signMessages([messageBytes]);
+```
+
+## Quick Start — React + Kit
+
+```tsx
+import { CherryMiniAppProvider, useCherryApp } from '@cherrydotfun/miniapp-sdk/react';
+import { createCherrySigner } from '@cherrydotfun/miniapp-sdk/kit';
+
+function MyGame() {
+  const app = useCherryApp(); // CherryMiniApp instance
+
+  const handleSign = async () => {
+    const signer = createCherrySigner(app);
+    const [signed] = await signer.signTransactions([{ messageBytes, signatures: {} }]);
+  };
+}
+```
+
 ## Environment Detection
 
-Check if running inside Cherry before initializing the SDK:
+Check if running inside Cherry before initializing:
 
 ```tsx
 import { isInsideCherry, getCherryEnvironment } from '@cherrydotfun/miniapp-sdk';
@@ -73,17 +121,6 @@ function App() {
 }
 ```
 
-## Wallet Adapter
-
-Drop-in replacement for Solana wallet adapter:
-
-```tsx
-import { CherryWalletAdapter } from '@cherrydotfun/miniapp-sdk';
-
-// Use in @solana/wallet-adapter-react WalletProvider
-const wallets = [new CherryWalletAdapter()];
-```
-
 ## Navigation
 
 Open Cherry screens from your mini-app:
@@ -97,7 +134,6 @@ function MyComponent() {
   // Open user profile — accepts wallet address, domain, or @handle
   await navigate.userProfile('alice.sol');
   await navigate.userProfile('@alice');
-  await navigate.userProfile('7xKXt...');
 
   // Open room — accepts roomId or @handle
   await navigate.openRoom('@solminer');
@@ -114,7 +150,7 @@ import { verifyLaunchToken } from '@cherrydotfun/miniapp-sdk';
 
 const payload = await verifyLaunchToken(token, {
   expectedAppId: 'your-app-id',
-  // jwksUrl defaults to https://api.cherry.fun/.well-known/jwks.json
+  // jwksUrl defaults to https://chat.cherry.fun/.well-known/jwks.json
 });
 
 // payload.sub — wallet address
@@ -131,8 +167,9 @@ import { CherryMiniApp } from '@cherrydotfun/miniapp-sdk';
 const cherry = new CherryMiniApp();
 await cherry.init();
 
-console.log(cherry.user.publicKey);
-console.log(cherry.room.title);
+cherry.user.publicKey;   // wallet address
+cherry.room.title;       // room name
+cherry.launchToken;      // JWT for backend
 
 const sig = await cherry.wallet.signMessage(new TextEncoder().encode('hello'));
 await cherry.navigate.userProfile('alice.sol');
@@ -148,11 +185,12 @@ cherry.on('resumed', () => console.log('App resumed'));
 | Hook | Description |
 |------|-------------|
 | `useCherryMiniApp()` | `{ user, room, launchToken, isReady, error }` |
+| `useCherryApp()` | `CherryMiniApp` instance (for kit signer etc.) |
 | `useCherryWallet()` | `{ publicKey, connected, signTransaction, signMessage, signAndSendTransaction }` |
 | `useCherryNavigate()` | `{ userProfile(id), openRoom(id) }` |
 | `useCherryEnvironment()` | `{ isEmbedded, platform }` — no provider needed |
 
-### CherryMiniApp
+### CherryMiniApp (Core)
 
 | Property/Method | Description |
 |-----------------|-------------|
@@ -160,13 +198,29 @@ cherry.on('resumed', () => console.log('App resumed'));
 | `user` | `{ publicKey, displayName, avatarUrl }` |
 | `room` | `{ id, title, memberCount }` |
 | `launchToken` | JWT string for backend verification |
-| `wallet.signTransaction(tx)` | Sign a Solana transaction |
+| `wallet.signTransaction(tx)` | Sign a transaction (returns `Uint8Array`) |
 | `wallet.signMessage(msg)` | Sign an arbitrary message |
 | `wallet.signAndSendTransaction(tx)` | Sign and submit transaction |
 | `navigate.userProfile(id)` | Open user profile (wallet/domain/@handle) |
 | `navigate.openRoom(id)` | Open room (roomId/@handle) |
 | `on(event, handler)` | Listen to `suspended`, `resumed`, `walletDisconnected` |
 | `destroy()` | Cleanup listeners |
+
+### CherryWalletAdapter (solana/)
+
+```ts
+import { CherryWalletAdapter } from '@cherrydotfun/miniapp-sdk/solana';
+```
+
+Drop-in `BaseWalletAdapter` for `@solana/wallet-adapter-react`. Handles connect, signTransaction, signMessage, sendTransaction.
+
+### createCherrySigner (kit/)
+
+```ts
+import { createCherrySigner } from '@cherrydotfun/miniapp-sdk/kit';
+```
+
+Returns a `TransactionSigner` compatible with `@solana/kit`. Supports `signTransactions` and `signMessages`.
 
 ### Bridge Protocol
 

@@ -4,6 +4,7 @@ export { CherryMiniAppProvider, type CherryMiniAppProviderProps } from './provid
 // Hooks
 export {
   useCherryMiniApp,
+  useCherryApp,
   useCherryWallet,
   useCherryNavigate,
   useCherryEnvironment,
@@ -23,8 +24,7 @@ export type {
 // Re-export environment helpers (useful in non-hook contexts inside React apps)
 export { isInsideCherry, getCherryEnvironment, detectPlatform } from '../env';
 
-// Re-export main client and adapter for direct use
+// Re-export main client for direct use
 export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from '../client';
-export { CherryWalletAdapter, CherryWalletAdapterName } from '../wallet-adapter';
 export { verifyLaunchToken } from '../token';
 export { BRIDGE_VERSION } from '../types';

@@ -10,8 +10,8 @@ import {
   type WalletName,
 } from '@solana/wallet-adapter-base';
 import { PublicKey, Transaction, VersionedTransaction, type Connection } from '@solana/web3.js';
-import { getSharedBridge } from './bridge';
-import { isInsideCherry } from './env';
+import { getSharedBridge } from '../bridge';
+import { isInsideCherry } from '../env';
 
 export const CherryWalletAdapterName = 'Cherry' as WalletName<'Cherry'>;
 
