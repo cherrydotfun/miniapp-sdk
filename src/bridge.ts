@@ -45,9 +45,13 @@ export class Bridge {
           this.pending.delete(response.id);
           clearTimeout(pending.timer);
           if (response.error) {
-            pending.reject(
-              new BridgeError(response.error.message, response.error.code),
-            );
+            const err = response.error;
+            // Handle both string and { code, message } error formats
+            if (typeof err === 'string') {
+              pending.reject(new BridgeError(err, 'UNKNOWN'));
+            } else {
+              pending.reject(new BridgeError(err.message ?? 'Unknown error', err.code ?? 'UNKNOWN'));
+            }
           } else {
             pending.resolve(response.result);
           }
