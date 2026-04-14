@@ -102,6 +102,12 @@ export class CherryMiniApp {
   }
 
   private waitForInit(): Promise<BridgeInitMessage> {
+    // Check if cherry:init was already received before init() was called
+    const buffered = this.bridge.consumeBufferedInit();
+    if (buffered && buffered['type'] === 'cherry:init') {
+      return Promise.resolve(buffered as unknown as BridgeInitMessage);
+    }
+
     return new Promise<BridgeInitMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
