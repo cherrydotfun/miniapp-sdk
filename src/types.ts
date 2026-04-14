@@ -85,6 +85,8 @@ export interface CherryWallet {
   publicKey: string;
   /** Signs a transaction. Accepts Transaction, VersionedTransaction, Uint8Array, or base64 string. Returns signed bytes. */
   signTransaction(transaction: unknown): Promise<Uint8Array>;
+  /** Signs all transactions in a single batch request. Returns array of signed bytes. */
+  signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
   /** Signs and sends a transaction. Returns signature string. */
   signAndSendTransaction(transaction: unknown): Promise<string>;
   /** Signs an arbitrary message. Returns signature bytes. */

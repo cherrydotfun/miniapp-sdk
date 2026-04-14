@@ -90,6 +90,21 @@ export class CherryWalletAdapter extends BaseWalletAdapter {
     }
   }
 
+  // ---- sign all transactions ----
+
+  async signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> {
+    if (!this._publicKey) throw new WalletNotConnectedError();
+    try {
+      const bridge = getSharedBridge();
+      const serialized = txs.map((tx) => serializeTxToBase64(tx));
+      const result = await bridge.request('wallet.signTransactions', { transactions: serialized });
+      const signedArray = (result as Record<string, unknown>)?.['transactions'] ?? result;
+      return (signedArray as string[]).map((base64, i) => deserializeTxFromBase64(base64, txs[i]!) as T);
+    } catch (error) {
+      throw new WalletSignTransactionError((error as Error).message, error as Error);
+    }
+  }
+
   // ---- sign message ----
 
   async signMessage(message: Uint8Array): Promise<Uint8Array> {
