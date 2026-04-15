@@ -195,7 +195,7 @@ import { useCherryMiniApp, useCherryWallet } from '@cherrydotfun/miniapp-sdk/rea
 
 function GameUI() {
   const { user, room, launchToken, isReady } = useCherryMiniApp();
-  const { publicKey, signTransaction, signMessage } = useCherryWallet();
+  const { publicKey, signTransaction, signAllTransactions, signMessage } = useCherryWallet();
 }
 ```
 

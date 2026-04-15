@@ -43,7 +43,7 @@ const wallets = [new CherryWalletAdapter()];
 
 function MyGame() {
   const { user, room, launchToken, isReady } = useCherryMiniApp();
-  const { publicKey, signTransaction, signMessage } = useCherryWallet();
+  const { publicKey, signTransaction, signAllTransactions, signMessage } = useCherryWallet();
 
   if (!isReady) return <div>Loading...</div>;
 
@@ -172,6 +172,7 @@ cherry.room.title;       // room name
 cherry.launchToken;      // JWT for backend
 
 const sig = await cherry.wallet.signMessage(new TextEncoder().encode('hello'));
+const signed = await cherry.wallet.signAllTransactions([tx1, tx2, tx3]); // batch sign
 await cherry.navigate.userProfile('alice.sol');
 
 cherry.on('suspended', () => console.log('App suspended'));
@@ -186,7 +187,7 @@ cherry.on('resumed', () => console.log('App resumed'));
 |------|-------------|
 | `useCherryMiniApp()` | `{ user, room, launchToken, isReady, error }` |
 | `useCherryApp()` | `CherryMiniApp` instance (for kit signer etc.) |
-| `useCherryWallet()` | `{ publicKey, connected, signTransaction, signMessage, signAndSendTransaction }` |
+| `useCherryWallet()` | `{ publicKey, connected, signTransaction, signAllTransactions, signMessage, signAndSendTransaction }` |
 | `useCherryNavigate()` | `{ userProfile(id), openRoom(id) }` |
 | `useCherryEnvironment()` | `{ isEmbedded, platform }` — no provider needed |
 
@@ -199,6 +200,7 @@ cherry.on('resumed', () => console.log('App resumed'));
 | `room` | `{ id, title, memberCount }` |
 | `launchToken` | JWT string for backend verification |
 | `wallet.signTransaction(tx)` | Sign a transaction (returns `Uint8Array`) |
+| `wallet.signAllTransactions(txs)` | Sign multiple transactions in a single batch (returns `Uint8Array[]`) |
 | `wallet.signMessage(msg)` | Sign an arbitrary message |
 | `wallet.signAndSendTransaction(tx)` | Sign and submit transaction |
 | `navigate.userProfile(id)` | Open user profile (wallet/domain/@handle) |
@@ -212,7 +214,7 @@ cherry.on('resumed', () => console.log('App resumed'));
 import { CherryWalletAdapter } from '@cherrydotfun/miniapp-sdk/solana';
 ```
 
-Drop-in `BaseWalletAdapter` for `@solana/wallet-adapter-react`. Handles connect, signTransaction, signMessage, sendTransaction.
+Drop-in `BaseWalletAdapter` for `@solana/wallet-adapter-react`. Handles connect, signTransaction, signAllTransactions, signMessage, sendTransaction.
 
 ### createCherrySigner (kit/)
 
