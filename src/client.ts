@@ -102,6 +102,12 @@ export class CherryMiniApp {
   }
 
   private waitForInit(): Promise<BridgeInitMessage> {
+    // Check if cherry:init was already received before init() was called
+    const buffered = this.bridge.consumeBufferedInit();
+    if (buffered && buffered['type'] === 'cherry:init') {
+      return Promise.resolve(buffered as unknown as BridgeInitMessage);
+    }
+
     return new Promise<BridgeInitMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
@@ -128,6 +134,7 @@ export class CherryMiniApp {
   get wallet(): {
     readonly publicKey: string | null;
     signTransaction(transaction: unknown): Promise<unknown>;
+    signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
     signAndSendTransaction(transaction: unknown): Promise<string>;
     signMessage(message: Uint8Array): Promise<Uint8Array>;
   } {
@@ -146,6 +153,16 @@ export class CherryMiniApp {
           .then((result) => {
             const tx = (result as Record<string, unknown>)?.['transaction'] ?? result;
             return base64ToUint8Array(tx as string);
+          });
+      },
+      signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]> {
+        self.assertReady();
+        const base64Txs = transactions.map(serializeTxToBase64);
+        return self.bridge
+          .request('wallet.signTransactions', { transactions: base64Txs })
+          .then((result) => {
+            const signedArray = (result as Record<string, unknown>)?.['transactions'] ?? result;
+            return (signedArray as string[]).map((tx) => base64ToUint8Array(tx));
           });
       },
       signAndSendTransaction(transaction: unknown): Promise<string> {

@@ -31,6 +31,7 @@ export interface UseCherryWalletResult {
   publicKey: string | null;
   connected: boolean;
   signTransaction(transaction: unknown): Promise<unknown>;
+  signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
   signMessage(message: Uint8Array): Promise<Uint8Array>;
   signAndSendTransaction(transaction: unknown): Promise<string>;
 }
@@ -48,6 +49,13 @@ export function useCherryWallet(): UseCherryWalletResult {
           return Promise.reject(new Error('CherryMiniApp not initialised'));
         }
         return app.wallet.signTransaction(transaction);
+      },
+
+      signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]> {
+        if (!app) {
+          return Promise.reject(new Error('CherryMiniApp not initialised'));
+        }
+        return app.wallet.signAllTransactions(transactions);
       },
 
       signMessage(message: Uint8Array): Promise<Uint8Array> {

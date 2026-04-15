@@ -21,6 +21,13 @@ export class Bridge {
   private readonly handlers: MessageHandler[] = [];
   private readonly listener: (event: MessageEvent) => void;
 
+  /**
+   * Buffer for cherry:init — if the host sends it before any handler is
+   * registered (i.e. before cherry.init() is called), we keep it here so
+   * waitForInit() can resolve immediately instead of timing out.
+   */
+  private _bufferedInit: BridgeMessage | null = null;
+
   constructor() {
     this.listener = (event: MessageEvent) => {
       let data: unknown = event.data;
@@ -59,12 +66,29 @@ export class Bridge {
         }
       }
 
+      // Buffer cherry:init if no handlers are registered yet, so it is not lost
+      if (message['type'] === 'cherry:init' && this.handlers.length === 0) {
+        this._bufferedInit = message;
+        return;
+      }
+
       for (const handler of this.handlers) {
         handler(message);
       }
     };
 
     window.addEventListener('message', this.listener);
+  }
+
+  /**
+   * Returns a previously buffered cherry:init message (if any) and clears the
+   * buffer. Called by waitForInit() to handle the case where the host sent
+   * cherry:init before the SDK called init().
+   */
+  consumeBufferedInit(): BridgeMessage | null {
+    const msg = this._bufferedInit;
+    this._bufferedInit = null;
+    return msg;
   }
 
   sendToHost(message: BridgeMessage): void {

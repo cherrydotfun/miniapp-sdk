@@ -65,33 +65,32 @@ export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSign
     address,
 
     async signTransactions(transactions) {
-      const results = [];
-      for (const tx of transactions) {
-        // Wrap messageBytes into Solana wire-format transaction so the host
-        // wallet signs it as a real transaction (not as a prefixed message).
+      // Wrap ALL transactions into wire format and encode to base64
+      const base64Txs = transactions.map((tx) => {
         // Wire format: [compact-u16 num_sigs=1] [64 zero bytes (sig placeholder)] [messageBytes]
         const wireBytes = new Uint8Array(1 + 64 + tx.messageBytes.length);
         wireBytes[0] = 1; // compact-u16: 1 signature
         // bytes 1..64 stay zero (signature placeholder)
         wireBytes.set(tx.messageBytes, 65);
+        return uint8ArrayToBase64(wireBytes);
+      });
 
-        const base64 = uint8ArrayToBase64(wireBytes);
-        const result = await bridge.request('wallet.signTransaction', { transaction: base64 });
-        const signedBase64 = (result as Record<string, unknown>)?.['transaction'] ?? result;
-        const signedWire = base64ToUint8Array(signedBase64 as string);
+      // Single batch request — host presents all transactions to the wallet at once
+      const result = await bridge.request('wallet.signTransactions', { transactions: base64Txs });
+      const signedArray = (result as Record<string, unknown>)?.['transactions'] ?? result;
 
-        // Extract the 64-byte signature from position 1..64 of the signed wire tx
+      // Extract signatures from all signed transactions
+      return (signedArray as string[]).map((signedBase64, i) => {
+        const signedWire = base64ToUint8Array(signedBase64);
         const signature = signedWire.slice(1, 65);
-
-        results.push({
-          messageBytes: tx.messageBytes,
+        return {
+          messageBytes: transactions[i]!.messageBytes,
           signatures: {
-            ...tx.signatures,
+            ...transactions[i]!.signatures,
             [address]: signature,
           } as Record<string, Uint8Array>,
-        });
-      }
-      return results;
+        };
+      });
     },
 
     async signMessages(messages) {

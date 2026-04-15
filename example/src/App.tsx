@@ -154,7 +154,12 @@ export function App() {
 // ============================================================================
 
 function Web3JsSection({ wallet, publicKey }: {
-  wallet: { signMessage: (m: Uint8Array) => Promise<Uint8Array>; signTransaction: (tx: unknown) => Promise<Uint8Array>; connected: boolean };
+  wallet: {
+    signMessage: (m: Uint8Array) => Promise<Uint8Array>;
+    signTransaction: (tx: unknown) => Promise<unknown>;
+    signAllTransactions: (txs: unknown[]) => Promise<Uint8Array[]>;
+    connected: boolean;
+  };
   publicKey: string | null;
 }) {
   const [signMsgResult, setSignMsgResult] = useState<string | null>(null);
@@ -163,6 +168,9 @@ function Web3JsSection({ wallet, publicKey }: {
   const [signTxResult, setSignTxResult] = useState<string | null>(null);
   const [signTxLoading, setSignTxLoading] = useState(false);
   const [signTxError, setSignTxError] = useState<string | null>(null);
+  const [signAllResult, setSignAllResult] = useState<string | null>(null);
+  const [signAllLoading, setSignAllLoading] = useState(false);
+  const [signAllError, setSignAllError] = useState<string | null>(null);
 
   const handleSignMessage = async () => {
     setSignMsgLoading(true); setSignMsgError(null); setSignMsgResult(null);
@@ -184,9 +192,33 @@ function Web3JsSection({ wallet, publicKey }: {
       tx.recentBlockhash = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
       tx.feePayer = new PublicKey(publicKey!);
       const signed = await wallet.signTransaction(tx);
-      setSignTxResult(`Signed ${signed.length} bytes`);
+      setSignTxResult(`Signed ${(signed as Uint8Array).length} bytes`);
     } catch (err) { setSignTxError(err instanceof Error ? err.message : String(err)); }
     finally { setSignTxLoading(false); }
+  };
+
+  const handleSignAllTransactions = async () => {
+    setSignAllLoading(true); setSignAllError(null); setSignAllResult(null);
+    try {
+      const { Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
+      const pk = new PublicKey(publicKey!);
+      const txs = [1, 2, 3].map((i) => {
+        const tx = new Transaction().add(
+          SystemProgram.transfer({ fromPubkey: pk, toPubkey: pk, lamports: i })
+        );
+        tx.recentBlockhash = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
+        tx.feePayer = pk;
+        return tx;
+      });
+      const signed = await wallet.signAllTransactions(txs);
+      const details = signed.map((tx, i) => {
+        const bytes = tx as Uint8Array;
+        const hasSig = bytes.length > 65 && bytes.slice(1, 65).some((b) => b !== 0);
+        return `tx${i + 1}: ${hasSig ? toBase64(bytes.slice(1, 65)).slice(0, 16) + '...' : 'no sig'}`;
+      });
+      setSignAllResult(`${signed.length} txs signed\n${details.join('\n')}`);
+    } catch (err) { setSignAllError(err instanceof Error ? err.message : String(err)); }
+    finally { setSignAllLoading(false); }
   };
 
   return (
@@ -218,6 +250,21 @@ const wallets = [new CherryWalletAdapter()];`}</CodeBlock>
         {signTxResult && <ResultRow label="Result" value={signTxResult} />}
         {signTxError && <p style={styles.errorText}>{signTxError}</p>}
       </div>
+
+      <div style={styles.card}>
+        <div style={styles.sectionHeader}>
+          <h2 style={styles.heading}>Sign All Transactions</h2>
+          <span style={styles.libBadge}>@solana/web3.js</span>
+        </div>
+        <CodeBlock>{`const { signAllTransactions } = useCherryWallet();
+
+// Signs 3 transactions in a single batch request
+// — one wallet confirmation for all transactions
+const signed = await signAllTransactions([tx1, tx2, tx3]);`}</CodeBlock>
+        <ActionButton label="Sign 3 Transactions (Batch)" loadingLabel="Signing..." loading={signAllLoading} disabled={!wallet.connected} onClick={handleSignAllTransactions} />
+        {signAllResult && <ResultRow label="Result" value={signAllResult} />}
+        {signAllError && <p style={styles.errorText}>{signAllError}</p>}
+      </div>
     </>
   );
 }
@@ -235,6 +282,9 @@ function KitSection({ publicKey }: { publicKey: string | null }) {
   const [signTxResult, setSignTxResult] = useState<string | null>(null);
   const [signTxLoading, setSignTxLoading] = useState(false);
   const [signTxError, setSignTxError] = useState<string | null>(null);
+  const [signBatchResult, setSignBatchResult] = useState<string | null>(null);
+  const [signBatchLoading, setSignBatchLoading] = useState(false);
+  const [signBatchError, setSignBatchError] = useState<string | null>(null);
 
   const handleCreateSigner = () => {
     if (!app) { setSignerInfo('CherryMiniApp not ready'); return; }
@@ -262,10 +312,6 @@ function KitSection({ publicKey }: { publicKey: string | null }) {
     setSignTxLoading(true); setSignTxError(null); setSignTxResult(null);
     try {
       const signer = createCherrySigner(app);
-
-      // Build a real Transaction via web3.js, then extract its message bytes
-      // to demonstrate Kit signer working with actual transaction data.
-      // In production Kit apps, you'd use @solana/kit transaction builders.
       const { Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
       const tx = new Transaction().add(
         SystemProgram.transfer({
@@ -286,6 +332,33 @@ function KitSection({ publicKey }: { publicKey: string | null }) {
       setSignTxResult(`Signed! sig: ${hasSig ? toBase64(hasSig).slice(0, 32) + '...' : 'none'}`);
     } catch (err) { setSignTxError(err instanceof Error ? err.message : String(err)); }
     finally { setSignTxLoading(false); }
+  };
+
+  const handleSignBatch = async () => {
+    if (!app || !publicKey) return;
+    setSignBatchLoading(true); setSignBatchError(null); setSignBatchResult(null);
+    try {
+      const signer = createCherrySigner(app);
+      const { Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
+      const pk = new PublicKey(publicKey);
+
+      const txInputs = [1, 2, 3].map((i) => {
+        const tx = new Transaction().add(
+          SystemProgram.transfer({ fromPubkey: pk, toPubkey: pk, lamports: i })
+        );
+        tx.recentBlockhash = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
+        tx.feePayer = pk;
+        return { messageBytes: tx.serializeMessage(), signatures: {} };
+      });
+
+      const signed = await signer.signTransactions(txInputs);
+      const details = signed.map((s, i) => {
+        const sig = s.signatures[signer.address];
+        return `tx${i + 1}: ${sig ? toBase64(sig).slice(0, 16) + '...' : 'no sig'}`;
+      });
+      setSignBatchResult(`${signed.length} txs signed\n${details.join('\n')}`);
+    } catch (err) { setSignBatchError(err instanceof Error ? err.message : String(err)); }
+    finally { setSignBatchLoading(false); }
   };
 
   return (
@@ -324,6 +397,24 @@ const [signed] = await signer.signTransactions([{
 
       <div style={styles.card}>
         <div style={styles.sectionHeader}>
+          <h2 style={styles.heading}>Sign All Transactions (Kit)</h2>
+          <span style={{ ...styles.libBadge, background: '#059669' }}>@solana/kit</span>
+        </div>
+        <CodeBlock>{`const signer = createCherrySigner(cherry);
+
+// Batch: all 3 transactions signed in a single request
+const signed = await signer.signTransactions([
+  { messageBytes: tx1Bytes, signatures: {} },
+  { messageBytes: tx2Bytes, signatures: {} },
+  { messageBytes: tx3Bytes, signatures: {} },
+]);`}</CodeBlock>
+        <ActionButton label="Sign 3 Transactions (Batch)" loadingLabel="Signing..." loading={signBatchLoading} disabled={!app} onClick={handleSignBatch} />
+        {signBatchResult && <ResultRow label="Result" value={signBatchResult} />}
+        {signBatchError && <p style={styles.errorText}>{signBatchError}</p>}
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.sectionHeader}>
           <h2 style={styles.heading}>Sign Message (Kit)</h2>
           <span style={{ ...styles.libBadge, background: '#059669' }}>@solana/kit</span>
         </div>
@@ -354,7 +445,7 @@ function ResultRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={styles.resultBox}>
       <span style={styles.label}>{label}</span>
-      <span style={styles.mono}>{value}</span>
+      <span style={{ ...styles.mono, whiteSpace: 'pre-line' }}>{value}</span>
     </div>
   );
 }
