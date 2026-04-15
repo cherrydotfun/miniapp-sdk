@@ -211,7 +211,12 @@ function Web3JsSection({ wallet, publicKey }: {
         return tx;
       });
       const signed = await wallet.signAllTransactions(txs);
-      setSignAllResult(`Batch signed ${signed.length} transactions`);
+      const details = signed.map((tx, i) => {
+        const bytes = tx as Uint8Array;
+        const hasSig = bytes.length > 65 && bytes.slice(1, 65).some((b) => b !== 0);
+        return `tx${i + 1}: ${hasSig ? toBase64(bytes.slice(1, 65)).slice(0, 16) + '...' : 'no sig'}`;
+      });
+      setSignAllResult(`${signed.length} txs signed\n${details.join('\n')}`);
     } catch (err) { setSignAllError(err instanceof Error ? err.message : String(err)); }
     finally { setSignAllLoading(false); }
   };
@@ -347,8 +352,11 @@ function KitSection({ publicKey }: { publicKey: string | null }) {
       });
 
       const signed = await signer.signTransactions(txInputs);
-      const allHaveSig = signed.every((s) => !!s.signatures[signer.address]);
-      setSignBatchResult(`Batch signed ${signed.length} txs, all have sig: ${allHaveSig}`);
+      const details = signed.map((s, i) => {
+        const sig = s.signatures[signer.address];
+        return `tx${i + 1}: ${sig ? toBase64(sig).slice(0, 16) + '...' : 'no sig'}`;
+      });
+      setSignBatchResult(`${signed.length} txs signed\n${details.join('\n')}`);
     } catch (err) { setSignBatchError(err instanceof Error ? err.message : String(err)); }
     finally { setSignBatchLoading(false); }
   };
@@ -437,7 +445,7 @@ function ResultRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={styles.resultBox}>
       <span style={styles.label}>{label}</span>
-      <span style={styles.mono}>{value}</span>
+      <span style={{ ...styles.mono, whiteSpace: 'pre-line' }}>{value}</span>
     </div>
   );
 }
