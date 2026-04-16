@@ -7,6 +7,7 @@ import {
   useCherryEnvironment,
 } from '@cherrydotfun/miniapp-sdk/react';
 import { createCherrySigner, type CherryTransactionSigner } from '@cherrydotfun/miniapp-sdk/kit';
+import { RawSignals } from './StandaloneView';
 
 function toBase64(arr: Uint8Array): string {
   let binary = '';
@@ -42,6 +43,7 @@ export function App() {
           <p style={styles.errorText}>{error.message}</p>
           <p style={styles.hint}>Make sure this app is running inside Cherry messenger.</p>
         </div>
+        <RawSignals />
       </div>
     );
   }
@@ -53,6 +55,7 @@ export function App() {
           <div style={styles.spinner} />
           <p style={styles.hint}>Connecting to Cherry...</p>
         </div>
+        <RawSignals />
       </div>
     );
   }

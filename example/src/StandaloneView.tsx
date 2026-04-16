@@ -20,6 +20,39 @@ const platformStrict = detectPlatform({ strict: true });
 const embeddedDefault = isInsideCherry({ strict: false });
 const embeddedStrict = isInsideCherry({ strict: true });
 
+// ---- exported: raw signals block usable anywhere ----
+
+export function RawSignals() {
+  return (
+    <div style={styles.card}>
+      <h3 style={styles.heading}>Raw Signals</h3>
+      <p style={styles.sectionHint}>Browser globals and URL params inspected by the SDK.</p>
+      <SignalRow label="window.__cherry" value={signals.cherryFlag} description="Injected by Cherry WebView before page load (mobile)" />
+      <SignalRow label="ReactNativeWebView" value={signals.rnWebView} description="Present in any React Native WebView (fallback)" />
+      <SignalRow label="cherry_embed=1" value={signals.cherryEmbedParam} description="Query param appended by Cherry web host (iframe)" />
+      <SignalRow label="window.parent !== window" value={signals.insideIframe} description="True inside any iframe (fallback)" />
+      <div style={{ ...styles.resultGrid, marginTop: 12 }}>
+        <div style={styles.resultCell}>
+          <span style={styles.resultLabel}>platform (default)</span>
+          <span style={platformDefault === 'standalone' ? styles.platformStandalone : styles.platformEmbedded}>{platformDefault}</span>
+        </div>
+        <div style={styles.resultCell}>
+          <span style={styles.resultLabel}>platform (strict)</span>
+          <span style={platformStrict === 'standalone' ? styles.platformStandalone : styles.platformEmbedded}>{platformStrict}</span>
+        </div>
+        <div style={styles.resultCell}>
+          <span style={styles.resultLabel}>isInsideCherry()</span>
+          <BoolBadge value={embeddedDefault} />
+        </div>
+        <div style={styles.resultCell}>
+          <span style={styles.resultLabel}>{'isInsideCherry({strict})'}</span>
+          <BoolBadge value={embeddedStrict} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- component ----
 
 export function StandaloneView() {
@@ -37,60 +70,8 @@ export function StandaloneView() {
         </p>
       </div>
 
-      {/* Raw signals */}
-      <div style={styles.card}>
-        <h3 style={styles.heading}>Raw Signals</h3>
-        <p style={styles.sectionHint}>Browser globals and URL params inspected by the SDK.</p>
-
-        <SignalRow
-          label="window.__cherry"
-          value={signals.cherryFlag}
-          description="Injected by Cherry WebView before page load (mobile)"
-        />
-        <SignalRow
-          label="ReactNativeWebView"
-          value={signals.rnWebView}
-          description="Present in any React Native WebView (fallback)"
-        />
-        <SignalRow
-          label="cherry_embed=1"
-          value={signals.cherryEmbedParam}
-          description="Query param appended by Cherry web host (iframe)"
-        />
-        <SignalRow
-          label="window.parent !== window"
-          value={signals.insideIframe}
-          description="True inside any iframe (fallback)"
-        />
-      </div>
-
-      {/* Detection results */}
-      <div style={styles.card}>
-        <h3 style={styles.heading}>Detection Results</h3>
-
-        <div style={styles.resultGrid}>
-          <div style={styles.resultCell}>
-            <span style={styles.resultLabel}>platform (default)</span>
-            <span style={platformDefault === 'standalone' ? styles.platformStandalone : styles.platformEmbedded}>
-              {platformDefault}
-            </span>
-          </div>
-          <div style={styles.resultCell}>
-            <span style={styles.resultLabel}>platform (strict)</span>
-            <span style={platformStrict === 'standalone' ? styles.platformStandalone : styles.platformEmbedded}>
-              {platformStrict}
-            </span>
-          </div>
-          <div style={styles.resultCell}>
-            <span style={styles.resultLabel}>isInsideCherry()</span>
-            <BoolBadge value={embeddedDefault} />
-          </div>
-          <div style={styles.resultCell}>
-            <span style={styles.resultLabel}>isInsideCherry({'{ strict: true }'})</span>
-            <BoolBadge value={embeddedStrict} />
-          </div>
-        </div>
-      </div>
+      {/* Raw signals + detection results */}
+      <RawSignals />
 
       {/* URL */}
       <div style={styles.card}>
