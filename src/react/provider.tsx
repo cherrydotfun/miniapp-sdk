@@ -31,6 +31,7 @@ export interface CherryMiniAppProviderProps extends CherryMiniAppOptions {
 export function CherryMiniAppProvider({
   children,
   initTimeout,
+  strict,
 }: CherryMiniAppProviderProps): React.JSX.Element {
   const appRef = useRef<CherryMiniApp | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -40,7 +41,10 @@ export function CherryMiniAppProvider({
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    const app = new CherryMiniApp(initTimeout !== undefined ? { initTimeout } : {});
+    const opts: import('../client').CherryMiniAppOptions = {};
+    if (initTimeout !== undefined) opts.initTimeout = initTimeout;
+    if (strict !== undefined) opts.strict = strict;
+    const app = new CherryMiniApp(opts);
     appRef.current = app;
 
     app

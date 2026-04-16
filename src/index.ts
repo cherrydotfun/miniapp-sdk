@@ -17,7 +17,7 @@ export {
 } from './types';
 
 // Environment detection
-export { detectPlatform, isInsideCherry, getCherryEnvironment } from './env';
+export { detectPlatform, isInsideCherry, getCherryEnvironment, type DetectPlatformOptions } from './env';
 
 // Bridge transport (exposed for advanced usage)
 export { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';

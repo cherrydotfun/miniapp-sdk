@@ -75,6 +75,62 @@ npm install @solana/wallet-adapter-base @solana/web3.js
 # For @solana/kit projects — no additional deps needed
 ```
 
+### Step 2b: Server Configuration — CORS & CSP (Web iframe only)
+
+> Skip if the mini-app will only be embedded in Cherry **mobile** (WebView). Required for Cherry **web** (iframe).
+
+The browser blocks iframes and API calls unless the mini-app's server explicitly allows them.
+
+#### Allow Cherry to embed the app (`frame-ancestors`)
+
+Add to **every HTML response** from the mini-app's server:
+
+```
+Content-Security-Policy: frame-ancestors 'self' https://chat.cherry.fun
+```
+
+Make sure there is **no** `X-Frame-Options: DENY` or `X-Frame-Options: SAMEORIGIN` without override (these silently block the iframe in Chrome/Firefox).
+
+Framework-specific examples:
+
+```ts
+// Next.js — next.config.ts
+async headers() {
+  return [{
+    source: '/(.*)',
+    headers: [{ key: 'Content-Security-Policy', value: "frame-ancestors 'self' https://chat.cherry.fun" }],
+  }];
+}
+```
+
+```ts
+// Express
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://chat.cherry.fun");
+  next();
+});
+```
+
+```nginx
+# Nginx
+add_header Content-Security-Policy "frame-ancestors 'self' https://chat.cherry.fun" always;
+```
+
+#### Backend API CORS
+
+Usually **no changes needed** — the iframe runs on the mini-app's own origin, so API calls are same-origin. Only act if:
+
+- The backend has an explicit `Origin` allowlist → make sure `https://yourgame.example` is in it
+- The backend checks `Referer` for CSRF protection → verify iframe requests still pass
+
+#### Checklist
+
+| | Requirement |
+|---|---|
+| ✅ | `frame-ancestors … https://chat.cherry.fun` on all HTML responses |
+| ✅ | No `X-Frame-Options: DENY/SAMEORIGIN` without override |
+| ✅ | Backend `Origin` allowlist includes the mini-app's own domain |
+
 ### Step 3: Environment Detection — Conditional Rendering
 
 Add environment detection at the TOP of the component tree, BEFORE any provider:
@@ -95,6 +151,18 @@ function App() {
   const { isEmbedded, platform } = useCherryEnvironment();
 }
 ```
+
+**Strict mode** — opt in once all Cherry hosts your users run inject `window.__cherry` (WebView) or append `cherry_embed=1` (iframe). Prevents false positives in wallet in-app browsers:
+
+```tsx
+// All detection APIs accept { strict: true }
+isInsideCherry({ strict: true });
+const { isEmbedded } = useCherryEnvironment({ strict: true });
+<CherryMiniAppProvider strict={true}>...</CherryMiniAppProvider>
+new CherryMiniApp({ strict: true });
+```
+
+Without strict mode, fallbacks (`ReactNativeWebView`, `window.parent !== window`) are active for backward compatibility with older Cherry builds.
 
 ### Step 4a: Wallet — @solana/web3.js Path
 
@@ -261,6 +329,11 @@ Test both modes:
 - Hidden UI elements don't appear
 - Navigation opens Cherry screens
 
+**Web iframe specifically:**
+- App loads inside Cherry web (not blocked by `X-Frame-Options` / CSP)
+- Browser DevTools show no `Refused to frame` errors
+- API calls from within the iframe succeed (check Network tab for CORS errors)
+
 ## Common Mistakes
 
 | Mistake | Fix |
@@ -271,6 +344,10 @@ Test both modes:
 | Checking `isInsideCherry()` after async init | Call synchronously at module load |
 | Not auto-selecting Cherry wallet | Add `AutoSelectCherry` component |
 | Showing wallet connect in embed | Wrap with `if (!isEmbedded)` |
+| App doesn't load in Cherry web (iframe) | Missing `frame-ancestors https://chat.cherry.fun` CSP header |
+| `X-Frame-Options: SAMEORIGIN` blocks embed | Remove or override with CSP `frame-ancestors` |
+| `isInsideCherry()` false in Cherry web | Cherry web adds `cherry_embed=1` to URL — verify the param reaches the app; check if SPA strips query params |
+| False positive in wallet in-app browser | Enable strict mode: `isInsideCherry({ strict: true })` |
 
 ## Lifecycle Events
 

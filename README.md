@@ -121,6 +121,106 @@ function App() {
 }
 ```
 
+### Strict Mode
+
+By default the SDK uses fallback heuristics for backward compatibility with older Cherry builds:
+
+- `ReactNativeWebView` — present in any React Native WebView, not just Cherry's
+- `window.parent !== window` — true inside any iframe, not just Cherry's
+
+This can cause **false positives** (e.g. wallet in-app browsers). Once your users are on a Cherry version that injects `window.__cherry` (WebView) or appends `cherry_embed=1` (iframe), enable **strict mode** to rely only on Cherry-specific signals:
+
+```tsx
+// Standalone functions
+isInsideCherry({ strict: true });
+getCherryEnvironment({ strict: true });
+detectPlatform({ strict: true });
+
+// React hook
+const { isEmbedded } = useCherryEnvironment({ strict: true });
+
+// Provider (passes strict to CherryMiniApp internally)
+<CherryMiniAppProvider strict={true}>...</CherryMiniAppProvider>
+
+// CherryMiniApp
+const cherry = new CherryMiniApp({ strict: true });
+```
+
+In strict mode only these signals are accepted:
+- **Mobile WebView:** `window.__cherry === true` (injected by Cherry before page load)
+- **Web iframe:** `cherry_embed=1` query parameter (appended by Cherry host to the URL)
+
+## Web Embedding — CORS & CSP
+
+When your mini-app runs inside the Cherry **web client** (iframe), the browser enforces standard cross-origin policies. Two things must be configured on your mini-app's server for the embed to work.
+
+### 1. Allow Cherry to frame your app (`frame-ancestors`)
+
+By default many frameworks set `X-Frame-Options: SAMEORIGIN` or a restrictive `Content-Security-Policy`, which blocks any iframe embedding. You need to explicitly allow Cherry's origin.
+
+**Option A — CSP header (recommended):**
+```
+Content-Security-Policy: frame-ancestors 'self' https://chat.cherry.fun
+```
+
+**Option B — X-Frame-Options (legacy, less flexible):**
+```
+X-Frame-Options: ALLOW-FROM https://chat.cherry.fun
+```
+
+> `X-Frame-Options: ALLOW-FROM` is ignored by Chrome/Firefox — prefer the CSP header.
+
+Framework examples:
+
+```ts
+// Next.js — next.config.ts
+const nextConfig = {
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self' https://chat.cherry.fun",
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+```ts
+// Express / Node.js
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://chat.cherry.fun");
+  next();
+});
+```
+
+```nginx
+# Nginx
+add_header Content-Security-Policy "frame-ancestors 'self' https://chat.cherry.fun" always;
+```
+
+### 2. CORS on your backend API
+
+When your mini-app frontend (served from `https://yourgame.example`) calls its own backend API, the browser sends the request with `Origin: https://yourgame.example` — same as outside the iframe, so **no additional CORS config is needed** if your API already allows that origin.
+
+The one case that requires attention: if your API validates the `Referer` header or only allows requests when `Origin` exactly matches a whitelist, make sure `https://yourgame.example` is in that list. The Cherry host page is never the origin of your API calls — the iframe is its own browsing context.
+
+If your mini-app calls any **Cherry API endpoints** directly (not via the SDK bridge), add the appropriate `Access-Control-Allow-Origin` on your side or proxy through your own backend.
+
+### Checklist
+
+| | Requirement |
+|---|---|
+| ✅ | `Content-Security-Policy: frame-ancestors … https://chat.cherry.fun` on all HTML responses |
+| ✅ | No `X-Frame-Options: DENY` or `X-Frame-Options: SAMEORIGIN` without override |
+| ✅ | Backend API allows `Origin: https://yourgame.example` (usually already true) |
+| ✅ | No `Referer`-based origin checks that would break inside an iframe |
+
 ## Navigation
 
 Open Cherry screens from your mini-app:
@@ -189,12 +289,13 @@ cherry.on('resumed', () => console.log('App resumed'));
 | `useCherryApp()` | `CherryMiniApp` instance (for kit signer etc.) |
 | `useCherryWallet()` | `{ publicKey, connected, signTransaction, signAllTransactions, signMessage, signAndSendTransaction }` |
 | `useCherryNavigate()` | `{ userProfile(id), openRoom(id) }` |
-| `useCherryEnvironment()` | `{ isEmbedded, platform }` — no provider needed |
+| `useCherryEnvironment(opts?)` | `{ isEmbedded, platform }` — no provider needed; pass `{ strict: true }` to disable fallbacks |
 
 ### CherryMiniApp (Core)
 
 | Property/Method | Description |
 |-----------------|-------------|
+| `new CherryMiniApp(opts?)` | `opts.initTimeout` (ms, default 10 000); `opts.strict` (disable fallback detection) |
 | `init()` | Wait for Cherry host handshake |
 | `user` | `{ publicKey, displayName, avatarUrl }` |
 | `room` | `{ id, title, memberCount }` |

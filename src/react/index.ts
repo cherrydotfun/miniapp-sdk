@@ -22,7 +22,7 @@ export type {
 } from '../types';
 
 // Re-export environment helpers (useful in non-hook contexts inside React apps)
-export { isInsideCherry, getCherryEnvironment, detectPlatform } from '../env';
+export { isInsideCherry, getCherryEnvironment, detectPlatform, type DetectPlatformOptions } from '../env';
 
 // Re-export main client for direct use
 export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from '../client';

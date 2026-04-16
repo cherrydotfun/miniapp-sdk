@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useCherryMiniAppContext } from './provider';
-import { getCherryEnvironment } from '../env';
+import { getCherryEnvironment, type DetectPlatformOptions } from '../env';
 import type { CherryUser, CherryRoom, CherryEnvironment, CherryNavigate } from '../types';
 
 // ---- useCherryMiniApp ----
@@ -107,8 +107,14 @@ export function useCherryNavigate(): CherryNavigate {
 /**
  * Synchronous — does NOT require CherryMiniAppProvider.
  * Safe to call at the top of any component before the provider tree is mounted.
+ *
+ * Pass `{ strict: true }` to disable fallback detection and only accept
+ * Cherry-injected signals (`window.__cherry` / `cherry_embed=1`).
  */
-export function useCherryEnvironment(): CherryEnvironment {
-  // Stable reference: environment detection never changes after page load
-  return useMemo(() => getCherryEnvironment(), []);
+export function useCherryEnvironment(options: DetectPlatformOptions = {}): CherryEnvironment {
+  const { strict } = options;
+  // Stable reference: environment detection never changes after page load.
+  // strict is captured once at mount — changing it at runtime is not supported.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => getCherryEnvironment(strict !== undefined ? { strict } : {}), []);
 }

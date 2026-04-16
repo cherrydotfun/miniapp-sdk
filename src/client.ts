@@ -19,6 +19,16 @@ type EventListener<T = unknown> = (data: T) => void;
 export interface CherryMiniAppOptions {
   /** Milliseconds to wait for cherry:init from the host. Default: 10_000 */
   initTimeout?: number;
+  /**
+   * When `true`, only Cherry-injected signals are used for environment
+   * detection (`window.__cherry` / `cherry_embed=1`). Fallbacks such as
+   * `ReactNativeWebView` or `window.parent !== window` are disabled.
+   *
+   * Use once all Cherry hosts you target have been updated to inject the
+   * new signals, to prevent false positives in wallet in-app browsers.
+   * Default: `false`.
+   */
+  strict?: boolean;
 }
 
 export class CherryMiniApp {
