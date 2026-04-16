@@ -27,3 +27,11 @@ export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } fro
 
 // Server-side token verification
 export { verifyLaunchToken } from './token';
+
+// Custom auth helpers (Privy, etc.)
+export {
+  getCherryCustomAuthConfig,
+  CHERRY_JWKS_URL,
+  CHERRY_ISSUER,
+  type CherryCustomAuthConfig,
+} from './privy';

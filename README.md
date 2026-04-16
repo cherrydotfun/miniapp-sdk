@@ -337,6 +337,55 @@ The SDK communicates with Cherry via `postMessage`. The protocol is versioned (`
 | `cherry:response` | Host → App | Operation result |
 | `cherry:event` | Host → App | Lifecycle events |
 
+## Privy Integration
+
+If your mini-app uses [Privy](https://privy.io) for authentication or embedded wallets, you can use Cherry's launch token as a **custom auth provider** — giving users zero-click login inside Cherry.
+
+### Setup
+
+1. **Privy Dashboard** → Settings → Custom Auth → Add Provider:
+   - JWKS URL: `https://chat.cherry.fun/.well-known/jwks.json`
+   - Issuer: `https://chat.cherry.fun`
+   - User ID field: `sub`
+
+2. **Code** — dual-mode login (Cherry + standalone):
+
+```tsx
+import { CherryMiniAppProvider, useCherryApp, useCherryEnvironment } from '@cherrydotfun/miniapp-sdk/react';
+import { usePrivy } from '@privy-io/react-auth';
+
+function AuthGate({ children }) {
+  const { isEmbedded } = useCherryEnvironment();
+  const cherry = useCherryApp();
+  const { loginWithCustomAccessToken, authenticated, ready } = usePrivy();
+
+  useEffect(() => {
+    if (!ready || authenticated) return;
+    if (isEmbedded && cherry?.launchToken) {
+      loginWithCustomAccessToken(cherry.launchToken); // transparent login
+    }
+  }, [ready, authenticated, isEmbedded, cherry]);
+
+  if (!authenticated && !isEmbedded) return <PrivyLoginButton />;
+  return <>{children}</>;
+}
+```
+
+3. **Helper** — get auth config programmatically:
+
+```ts
+import { getCherryCustomAuthConfig } from '@cherrydotfun/miniapp-sdk';
+
+const { token, jwksUrl, issuer } = getCherryCustomAuthConfig(cherry);
+```
+
+| Environment | Login Method | User Action |
+|-------------|-------------|-------------|
+| Inside Cherry | `loginWithCustomAccessToken(launchToken)` | None — automatic |
+| Standalone | Standard Privy UI (email, social, wallet) | User clicks login |
+
+See the [integration skill](./skills/cherry-miniapp-integration/SKILL.md) for a complete step-by-step guide.
+
 ## AI-Assisted Integration
 
 This package includes a [Claude Code / Codex skill](./skills/README.md) that automates SDK integration into existing web3 apps. After installing the SDK, copy the skill to your AI assistant and say "Integrate Cherry Mini-App SDK" — it will analyze your codebase and guide you step by step.

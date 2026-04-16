@@ -349,6 +349,107 @@ Test both modes:
 | `isInsideCherry()` false in Cherry web | Cherry web adds `cherry_embed=1` to URL — verify the param reaches the app; check if SPA strips query params |
 | False positive in wallet in-app browser | Enable strict mode: `isInsideCherry({ strict: true })` |
 
+## Privy Integration — Transparent Login
+
+For miniapps using Privy for authentication and embedded wallets, Cherry launch tokens can be used as a **custom auth provider** in Privy. This gives users a zero-click login experience inside Cherry, with standard Privy login (email/social/wallet) as fallback in standalone mode.
+
+### Prerequisites
+
+- Privy account with app created at [console.privy.io](https://console.privy.io)
+- Cherry miniapp registered with `wallet:connect` permission
+
+### Step 1: Configure Privy Dashboard
+
+In Privy Dashboard → Settings → Custom Auth:
+1. Add a new provider
+2. **JWKS URL**: `https://chat.cherry.fun/.well-known/jwks.json`
+3. **Issuer**: `https://chat.cherry.fun`
+4. **User ID field**: `sub` (this maps to the user's Solana wallet address)
+
+### Step 2: Dual-Mode Login
+
+```tsx
+import { CherryMiniAppProvider, useCherryApp, useCherryEnvironment } from '@cherrydotfun/miniapp-sdk/react';
+import { usePrivy } from '@privy-io/react-auth';
+
+function AuthGate({ children }: { children: ReactNode }) {
+  const { isEmbedded } = useCherryEnvironment();
+  const cherry = useCherryApp();
+  const { loginWithCustomAccessToken, authenticated, ready } = usePrivy();
+
+  useEffect(() => {
+    if (!ready || authenticated) return;
+
+    if (isEmbedded && cherry?.launchToken) {
+      // Inside Cherry — transparent login via launch token
+      loginWithCustomAccessToken(cherry.launchToken);
+    }
+    // Outside Cherry — Privy shows standard login UI
+  }, [ready, authenticated, isEmbedded, cherry]);
+
+  if (!ready) return <Loading />;
+  if (!authenticated && !isEmbedded) return <PrivyLoginButton />;
+  if (!authenticated) return <Loading />; // waiting for custom auth
+
+  return <>{children}</>;
+}
+```
+
+### Step 3: Provider Setup
+
+```tsx
+import { PrivyProvider } from '@privy-io/react-auth';
+import { CherryMiniAppProvider } from '@cherrydotfun/miniapp-sdk/react';
+import { isInsideCherry } from '@cherrydotfun/miniapp-sdk';
+
+const embedded = isInsideCherry();
+
+function App() {
+  return (
+    <PrivyProvider
+      appId="your-privy-app-id"
+      config={{
+        embeddedWallets: {
+          solana: { createOnLogin: 'all-users' },
+          showWalletUIs: !embedded, // hide wallet UI inside Cherry
+        },
+      }}
+    >
+      {embedded ? (
+        <CherryMiniAppProvider>
+          <AuthGate><YourApp /></AuthGate>
+        </CherryMiniAppProvider>
+      ) : (
+        <AuthGate><YourApp /></AuthGate>
+      )}
+    </PrivyProvider>
+  );
+}
+```
+
+### How It Works
+
+| Environment | Login Method | User Action |
+|-------------|-------------|-------------|
+| Inside Cherry (WebView/iframe) | `loginWithCustomAccessToken(launchToken)` | None — automatic |
+| Standalone (browser) | Standard Privy UI (email, social, wallet) | User clicks login |
+
+- Cherry launch token JWT contains `sub` (wallet address), `iss` (cherry.fun), signed RS256
+- Privy validates token against Cherry JWKS endpoint
+- Privy creates or finds user by `sub` claim
+- Embedded wallet auto-provisioned if user is new
+- Same user recognized across both login methods (wallet address match)
+
+### Important Notes
+
+- Cherry launch token TTL is 5 minutes — Privy must validate it promptly after injection
+- The `sub` claim contains the Solana wallet address, not a Privy DID
+- Privy embedded wallet is separate from the Cherry host wallet — choose which to use for transactions
+- For wallet operations, you can use either:
+  - Cherry wallet (via `useCherryWallet()`) — signs through Cherry host
+  - Privy embedded wallet — signs locally via Privy iframe
+- If using Cherry wallet for signing, you don't need Privy embedded wallets at all — Privy becomes auth-only
+
 ## Lifecycle Events
 
 ```tsx
