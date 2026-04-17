@@ -143,9 +143,10 @@ export class CherryWalletAdapter extends BaseWalletAdapter {
 // ---- transaction helpers ----
 
 function serializeTxToBase64(tx: Transaction | VersionedTransaction): string {
-  return uint8ArrayToBase64(
-    (tx as Transaction).serialize({ requireAllSignatures: false }),
-  );
+  if (isVersionedTransaction(tx)) {
+    return uint8ArrayToBase64((tx as VersionedTransaction).serialize());
+  }
+  return uint8ArrayToBase64((tx as Transaction).serialize({ requireAllSignatures: false }));
 }
 
 function deserializeTxFromBase64(
