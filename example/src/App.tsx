@@ -18,6 +18,13 @@ function toBase64(arr: Uint8Array): string {
   return btoa(binary);
 }
 
+async function decodeBase64(s: string): Promise<Uint8Array> {
+  const binary = atob(s);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 export function App() {
   const { user, room, launchToken, isReady, error } = useCherryMiniApp();
   const cherryWallet = useCherryWallet();
@@ -534,9 +541,27 @@ type MultisigVariant = 'web3-legacy' | 'web3-v0' | 'kit-legacy' | 'kit-v0';
 interface MultisigResult {
   variant: MultisigVariant;
   messageBytesLen: number;
+  /** Did the host return the exact same messageBytes we sent? If false, the host/wallet mutated the tx. */
+  messageBytesIntact: boolean;
+  /** First byte offset where messageBytes differ (if any). */
+  firstDiffAt?: number;
   slot0: { address: string; role: string; sigPreview: string; valid: boolean };
   slot1: { address: string; role: string; sigPreview: string; valid: boolean };
+  /** When messageBytes were mutated: is Cherry's sig valid against the RETURNED (mutated) messageBytes? */
+  cherryValidAgainstReturned?: boolean;
   error?: string;
+}
+
+function bytesEqualU8(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function firstDifference(a: Uint8Array, b: Uint8Array): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] !== b[i]) return i;
+  return a.length !== b.length ? n : -1;
 }
 
 async function verifySig(sig: Uint8Array, message: Uint8Array, pubkeyBase58: string): Promise<boolean> {
@@ -657,7 +682,18 @@ function MultisigResultView({ result }: { result: MultisigResult }) {
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4, fontSize: 11 }}>
-      <div style={{ color: '#737373' }}>messageBytes: {result.messageBytesLen} B</div>
+      <div style={{ color: '#737373' }}>
+        messageBytes: {result.messageBytesLen} B
+        {' · '}
+        <span style={{ color: result.messageBytesIntact ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
+          {result.messageBytesIntact ? 'intact' : `MUTATED @ byte ${result.firstDiffAt}`}
+        </span>
+      </div>
+      {!result.messageBytesIntact && result.cherryValidAgainstReturned !== undefined && (
+        <div style={{ color: result.cherryValidAgainstReturned ? '#f59e0b' : '#dc2626', fontSize: 10 }}>
+          Cherry sig vs RETURNED messageBytes: {result.cherryValidAgainstReturned ? 'valid (host re-compiled tx)' : 'invalid'}
+        </div>
+      )}
       <MultisigSlotRow idx={0} slot={result.slot0} />
       <MultisigSlotRow idx={1} slot={result.slot1} />
     </div>
@@ -699,33 +735,63 @@ async function runMultisigTest(
     const messageBytes = await buildKitMultisigMessageBytes(cherryPubkey, local.address, version);
     const localSigBytes = await localSign(messageBytes, local.secret32);
 
-    const signer = createCherrySigner(app);
-    const [signed] = await signer.signTransactions([{
-      messageBytes,
-      signatures: { [local.address]: localSigBytes },
-    }]);
+    // Call the bridge directly so we can inspect the raw signed wire that the
+    // host returns — this lets us detect whether the host/wallet mutated the
+    // messageBytes during signing (a common cause of "my sig is Invalid").
+    const { getSharedBridge } = await import('@cherrydotfun/miniapp-sdk');
+    const bridge = getSharedBridge();
+    const sigCountBytes = new Uint8Array([2]); // compact-u16: 2 signatures
+    const wire = new Uint8Array(sigCountBytes.length + 2 * 64 + messageBytes.length);
+    wire.set(sigCountBytes, 0);
+    // sig slot 0 (cherry) left zero
+    // sig slot 1 (local) left zero — kit signer does NOT forward pre-existing sigs into the wire
+    wire.set(messageBytes, sigCountBytes.length + 2 * 64);
+    const rawResult = await bridge.request('wallet.signTransactions', {
+      transactions: [toBase64(wire)],
+    });
+    const signedBase64 = ((rawResult as Record<string, unknown>)?.['transactions'] as string[])?.[0];
+    if (!signedBase64) throw new Error('Host did not return a signed transaction');
 
-    const cherrySig = signed!.signatures[signer.address] as Uint8Array | undefined;
-    const localSigReturned = signed!.signatures[local.address] as Uint8Array | undefined;
+    const signedWire = await decodeBase64(signedBase64);
+    const msgStartReturned = sigCountBytes.length + 2 * 64;
+    const returnedMessageBytes = signedWire.slice(msgStartReturned);
+    const messageBytesIntact = bytesEqualU8(returnedMessageBytes, messageBytes);
+    const firstDiffAt = messageBytesIntact ? undefined : firstDifference(returnedMessageBytes, messageBytes);
 
-    const cherryValid = cherrySig ? await verifySig(cherrySig, messageBytes, cherryPubkey) : false;
-    const localValid = localSigReturned ? await verifySig(localSigReturned, messageBytes, local.address) : false;
+    const cherrySig = signedWire.slice(1, 65);
+    const localSigReturned = signedWire.slice(65, 129);
+    const hasCherrySig = cherrySig.some((b) => b !== 0);
+    const hasLocalSig = localSigReturned.some((b) => b !== 0);
+
+    const cherryValid = hasCherrySig ? await verifySig(cherrySig, messageBytes, cherryPubkey) : false;
+    const cherryValidAgainstReturned = hasCherrySig && !messageBytesIntact
+      ? await verifySig(cherrySig, returnedMessageBytes, cherryPubkey)
+      : undefined;
+    const localValid = hasLocalSig ? await verifySig(localSigReturned, messageBytes, local.address) : false;
+    // Use our (unchanged) local sig as authoritative for slot 1 verification;
+    // if the host returned a different one, note it in the preview.
+    const localValidPre = await verifySig(localSigBytes, messageBytes, local.address);
 
     return {
       variant,
       messageBytesLen: messageBytes.length,
+      messageBytesIntact,
+      firstDiffAt: firstDiffAt === -1 ? undefined : firstDiffAt,
       slot0: {
         address: cherryPubkey,
         role: 'Cherry (fee payer)',
-        sigPreview: cherrySig ? toBase64(cherrySig).slice(0, 16) + '…' : 'no sig',
+        sigPreview: hasCherrySig ? toBase64(cherrySig).slice(0, 16) + '…' : 'no sig',
         valid: cherryValid,
       },
       slot1: {
         address: local.address,
         role: 'local (pre-signed)',
-        sigPreview: localSigReturned ? toBase64(localSigReturned).slice(0, 16) + '…' : 'no sig',
-        valid: localValid,
+        sigPreview: hasLocalSig
+          ? toBase64(localSigReturned).slice(0, 16) + '…'
+          : (localValidPre ? toBase64(localSigBytes).slice(0, 16) + '… (local)' : 'no sig'),
+        valid: hasLocalSig ? localValid : localValidPre,
       },
+      cherryValidAgainstReturned,
     };
   }
 
@@ -737,16 +803,25 @@ async function runMultisigTest(
   const [signedRaw] = await wallet.signAllTransactions([tx]);
   const parsed = await parseSignedWeb3(signedRaw!, version);
 
+  const messageBytesIntact = bytesEqualU8(parsed.messageBytes, messageBytes);
+  const firstDiffAt = messageBytesIntact ? undefined : firstDifference(parsed.messageBytes, messageBytes);
+
+  // Verify Cherry's sig against the ORIGINAL messageBytes (what the user sent).
   const cherryValid = parsed.cherrySig
-    ? await verifySig(parsed.cherrySig, parsed.messageBytes, cherryPubkey)
+    ? await verifySig(parsed.cherrySig, messageBytes, cherryPubkey)
     : false;
+  const cherryValidAgainstReturned = parsed.cherrySig && !messageBytesIntact
+    ? await verifySig(parsed.cherrySig, parsed.messageBytes, cherryPubkey)
+    : undefined;
   const localValid = parsed.localSig
-    ? await verifySig(parsed.localSig, parsed.messageBytes, local.address)
+    ? await verifySig(parsed.localSig, messageBytes, local.address)
     : false;
 
   return {
     variant,
     messageBytesLen: messageBytes.length,
+    messageBytesIntact,
+    firstDiffAt: firstDiffAt === -1 ? undefined : firstDiffAt,
     slot0: {
       address: cherryPubkey,
       role: 'Cherry (fee payer)',
@@ -759,6 +834,7 @@ async function runMultisigTest(
       sigPreview: parsed.localSig ? toBase64(parsed.localSig).slice(0, 16) + '…' : 'no sig',
       valid: localValid,
     },
+    cherryValidAgainstReturned,
   };
 }
 
