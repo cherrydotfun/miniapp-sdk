@@ -51,6 +51,39 @@ function base64ToUint8Array(base64: string): Uint8Array {
 }
 
 /**
+ * Read `numRequiredSignatures` from a compiled Solana message.
+ *
+ * Wire format of the message:
+ *   - v0+: [version byte (0x80|v)] [numRequiredSignatures] [...]
+ *   - legacy: [numRequiredSignatures] [...]
+ *
+ * The high bit distinguishes: legacy messages always have
+ * numRequiredSignatures < 0x80, so bit 7 unset → legacy.
+ */
+function readNumRequiredSignatures(messageBytes: Uint8Array): number {
+  const first = messageBytes[0];
+  if (first === undefined) throw new Error('Empty messageBytes');
+  const isVersioned = (first & 0x80) !== 0;
+  const idx = isVersioned ? 1 : 0;
+  const n = messageBytes[idx];
+  if (n === undefined || n === 0) {
+    throw new Error('Cannot determine numRequiredSignatures from messageBytes');
+  }
+  return n;
+}
+
+/**
+ * Encode a small integer as Solana's compact-u16 (shortvec) — 1–3 bytes,
+ * 7 data bits per byte, MSB set on all but the last byte.
+ */
+function encodeCompactU16(n: number): Uint8Array {
+  if (n < 0 || n > 0xffff) throw new Error(`compact-u16 out of range: ${n}`);
+  if (n < 0x80) return new Uint8Array([n]);
+  if (n < 0x4000) return new Uint8Array([(n & 0x7f) | 0x80, n >> 7]);
+  return new Uint8Array([(n & 0x7f) | 0x80, ((n >> 7) & 0x7f) | 0x80, n >> 14]);
+}
+
+/**
  * Create a TransactionSigner from an initialized CherryMiniApp instance.
  */
 export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSigner {
@@ -65,24 +98,53 @@ export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSign
     address,
 
     async signTransactions(transactions) {
-      // Wrap ALL transactions into wire format and encode to base64
-      const base64Txs = transactions.map((tx) => {
-        // Wire format: [compact-u16 num_sigs=1] [64 zero bytes (sig placeholder)] [messageBytes]
-        const wireBytes = new Uint8Array(1 + 64 + tx.messageBytes.length);
-        wireBytes[0] = 1; // compact-u16: 1 signature
-        // bytes 1..64 stay zero (signature placeholder)
-        wireBytes.set(tx.messageBytes, 65);
-        return uint8ArrayToBase64(wireBytes);
+      // Build a correctly-sized wire format for each transaction.
+      // Wire: [compact-u16 sigCount] [sigCount * 64 zero bytes] [messageBytes]
+      //
+      // sigCount MUST equal `numRequiredSignatures` from the message header,
+      // otherwise the host's `VersionedTransaction.deserialize` produces a
+      // transaction whose sig-array length doesn't match its header — the
+      // wallet then either refuses to sign or returns a malformed tx.
+      //
+      // We fill all signature slots with zeros and rely on the host wallet
+      // to add its own signature in the correct slot; any pre-existing
+      // signatures from other signers are preserved by the caller below
+      // via `...tx.signatures` in the returned object.
+      const txMeta = transactions.map((tx) => {
+        const sigCount = readNumRequiredSignatures(tx.messageBytes);
+        const sigCountBytes = encodeCompactU16(sigCount);
+        const wireBytes = new Uint8Array(
+          sigCountBytes.length + 64 * sigCount + tx.messageBytes.length,
+        );
+        wireBytes.set(sigCountBytes, 0);
+        wireBytes.set(tx.messageBytes, sigCountBytes.length + 64 * sigCount);
+        return { wireBytes, sigCount, sigStart: sigCountBytes.length };
       });
+
+      const base64Txs = txMeta.map(({ wireBytes }) => uint8ArrayToBase64(wireBytes));
 
       // Single batch request — host presents all transactions to the wallet at once
       const result = await bridge.request('wallet.signTransactions', { transactions: base64Txs });
       const signedArray = (result as Record<string, unknown>)?.['transactions'] ?? result;
 
-      // Extract signatures from all signed transactions
+      // Extract this signer's signature from each signed transaction.
+      // Since we sent all-zero signatures, the host wallet writes its
+      // signature into its own slot — we find it by scanning for the
+      // first non-zero 64-byte slot.
       return (signedArray as string[]).map((signedBase64, i) => {
+        const meta = txMeta[i]!;
         const signedWire = base64ToUint8Array(signedBase64);
-        const signature = signedWire.slice(1, 65);
+        let signature: Uint8Array | null = null;
+        for (let j = 0; j < meta.sigCount; j++) {
+          const slot = signedWire.slice(meta.sigStart + j * 64, meta.sigStart + (j + 1) * 64);
+          if (slot.some((b) => b !== 0)) {
+            signature = slot;
+            break;
+          }
+        }
+        if (!signature) {
+          throw new Error('Host returned transaction with no signature from this signer');
+        }
         return {
           messageBytes: transactions[i]!.messageBytes,
           signatures: {
