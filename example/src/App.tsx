@@ -156,6 +156,9 @@ export function App() {
         <KitSection publicKey={cherryWallet.publicKey} txVersion={txVersion} />
       )}
 
+      {/* Multisig test (shared) */}
+      <MultisigSection publicKey={cherryWallet.publicKey} wallet={cherryWallet} />
+
       {/* Navigation (shared) */}
       <div style={styles.card}>
         <h2 style={styles.heading}>Navigation</h2>
@@ -520,6 +523,372 @@ const [signature] = await signer.signMessages([messageBytes]);`}</CodeBlock>
       </div>
     </>
   );
+}
+
+// ============================================================================
+// Multi-sig section — all 4 variants (web3.js/kit × legacy/v0)
+// ============================================================================
+
+type MultisigVariant = 'web3-legacy' | 'web3-v0' | 'kit-legacy' | 'kit-v0';
+
+interface MultisigResult {
+  variant: MultisigVariant;
+  messageBytesLen: number;
+  slot0: { address: string; role: string; sigPreview: string; valid: boolean };
+  slot1: { address: string; role: string; sigPreview: string; valid: boolean };
+  error?: string;
+}
+
+async function verifySig(sig: Uint8Array, message: Uint8Array, pubkeyBase58: string): Promise<boolean> {
+  try {
+    const { ed25519 } = await import('@noble/curves/ed25519');
+    const { PublicKey } = await import('@solana/web3.js');
+    const pubkey = new PublicKey(pubkeyBase58).toBytes();
+    return ed25519.verify(sig, message, pubkey);
+  } catch {
+    return false;
+  }
+}
+
+/** Generate a random keypair and return its base58 address + raw 32-byte secret. */
+async function generateLocalKeypair() {
+  const { Keypair } = await import('@solana/web3.js');
+  const kp = Keypair.generate();
+  return {
+    keypair: kp,
+    address: kp.publicKey.toBase58(),
+    secret32: kp.secretKey.slice(0, 32),
+  };
+}
+
+/** Ed25519-sign raw bytes locally (outside the wallet). */
+async function localSign(message: Uint8Array, secret32: Uint8Array): Promise<Uint8Array> {
+  const { ed25519 } = await import('@noble/curves/ed25519');
+  return ed25519.sign(message, secret32);
+}
+
+function MultisigSection({ publicKey, wallet }: {
+  publicKey: string | null;
+  wallet: {
+    signAllTransactions: (txs: unknown[]) => Promise<Uint8Array[]>;
+    connected: boolean;
+  };
+}) {
+  const app = useCherryApp();
+  const [loading, setLoading] = useState<MultisigVariant | null>(null);
+  const [results, setResults] = useState<Partial<Record<MultisigVariant, MultisigResult>>>({});
+
+  const run = async (variant: MultisigVariant) => {
+    if (!publicKey) return;
+    setLoading(variant);
+    setResults((r) => ({ ...r, [variant]: undefined }));
+    try {
+      const result = await runMultisigTest(variant, publicKey, wallet, app);
+      setResults((r) => ({ ...r, [variant]: result }));
+    } catch (err) {
+      setResults((r) => ({
+        ...r,
+        [variant]: {
+          variant,
+          messageBytesLen: 0,
+          slot0: { address: '—', role: '—', sigPreview: '—', valid: false },
+          slot1: { address: '—', role: '—', sigPreview: '—', valid: false },
+          error: err instanceof Error ? err.message : String(err),
+        },
+      }));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const variants: { id: MultisigVariant; label: string; lib: string }[] = [
+    { id: 'web3-legacy', label: 'Legacy', lib: '@solana/web3.js' },
+    { id: 'web3-v0', label: 'Versioned (v0)', lib: '@solana/web3.js' },
+    { id: 'kit-legacy', label: 'Legacy', lib: '@solana/kit' },
+    { id: 'kit-v0', label: 'Versioned (v0)', lib: '@solana/kit' },
+  ];
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.sectionHeader}>
+        <h2 style={styles.heading}>Multi-sig Test (2 signers)</h2>
+        <span style={styles.libBadge}>slot 0: Cherry · slot 1: local random</span>
+      </div>
+      <p style={styles.hint}>
+        Builds a 2-signer tx, pre-signs slot 1 locally with a random keypair,
+        passes it to <code>cherry.signer.signTransactions(...)</code> (or wallet-adapter) and
+        verifies both signatures against the exact messageBytes that were sent.
+      </p>
+
+      {variants.map(({ id, label, lib }) => (
+        <div key={id} style={{ marginTop: 10, padding: 10, background: '#111', borderRadius: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 13, color: '#e5e5e5', fontWeight: 600 }}>{label}</span>
+              <span style={{ ...styles.libBadge, background: lib === '@solana/kit' ? '#059669' : '#4f46e5' }}>
+                {lib}
+              </span>
+            </div>
+            <button
+              onClick={() => run(id)}
+              disabled={loading !== null || !publicKey || (id.startsWith('kit') && !app) || (id.startsWith('web3') && !wallet.connected)}
+              style={{
+                ...styles.button,
+                width: 'auto',
+                marginTop: 0,
+                padding: '6px 14px',
+                fontSize: 12,
+                opacity: loading === id ? 0.5 : 1,
+              }}
+            >
+              {loading === id ? 'Signing…' : 'Run'}
+            </button>
+          </div>
+          {results[id] && <MultisigResultView result={results[id]!} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MultisigResultView({ result }: { result: MultisigResult }) {
+  if (result.error) {
+    return <p style={{ ...styles.errorText, marginTop: 4, fontSize: 12 }}>{result.error}</p>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4, fontSize: 11 }}>
+      <div style={{ color: '#737373' }}>messageBytes: {result.messageBytesLen} B</div>
+      <MultisigSlotRow idx={0} slot={result.slot0} />
+      <MultisigSlotRow idx={1} slot={result.slot1} />
+    </div>
+  );
+}
+
+function MultisigSlotRow({ idx, slot }: { idx: number; slot: MultisigResult['slot0'] }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <span style={{ color: '#525252', minWidth: 18 }}>[{idx}]</span>
+      <span style={{
+        fontSize: 10, fontWeight: 700, color: '#fff',
+        background: slot.valid ? '#16a34a' : '#dc2626',
+        padding: '1px 6px', borderRadius: 4,
+      }}>
+        {slot.valid ? 'VALID' : 'INVALID'}
+      </span>
+      <span style={{ color: '#a3a3a3', fontSize: 10 }}>{slot.role}</span>
+      <code style={{ fontSize: 10, color: '#c4b5fd' }}>{slot.address.slice(0, 8)}…{slot.address.slice(-4)}</code>
+      <code style={{ fontSize: 10, color: '#737373' }}>{slot.sigPreview}</code>
+    </div>
+  );
+}
+
+/** Run one multi-sig test variant end-to-end. */
+async function runMultisigTest(
+  variant: MultisigVariant,
+  cherryPubkey: string,
+  wallet: { signAllTransactions: (txs: unknown[]) => Promise<Uint8Array[]>; connected: boolean },
+  app: ReturnType<typeof useCherryApp>,
+): Promise<MultisigResult> {
+  const local = await generateLocalKeypair();
+  const isV0 = variant.endsWith('v0');
+  const version: 'legacy' | 'v0' = isV0 ? 'v0' : 'legacy';
+
+  if (variant.startsWith('kit')) {
+    if (!app) throw new Error('CherryMiniApp not ready');
+    // Build messageBytes with kit — 2 signers: cherry (slot 0, fee payer) + local (slot 1)
+    const messageBytes = await buildKitMultisigMessageBytes(cherryPubkey, local.address, version);
+    const localSigBytes = await localSign(messageBytes, local.secret32);
+
+    const signer = createCherrySigner(app);
+    const [signed] = await signer.signTransactions([{
+      messageBytes,
+      signatures: { [local.address]: localSigBytes },
+    }]);
+
+    const cherrySig = signed!.signatures[signer.address] as Uint8Array | undefined;
+    const localSigReturned = signed!.signatures[local.address] as Uint8Array | undefined;
+
+    const cherryValid = cherrySig ? await verifySig(cherrySig, messageBytes, cherryPubkey) : false;
+    const localValid = localSigReturned ? await verifySig(localSigReturned, messageBytes, local.address) : false;
+
+    return {
+      variant,
+      messageBytesLen: messageBytes.length,
+      slot0: {
+        address: cherryPubkey,
+        role: 'Cherry (fee payer)',
+        sigPreview: cherrySig ? toBase64(cherrySig).slice(0, 16) + '…' : 'no sig',
+        valid: cherryValid,
+      },
+      slot1: {
+        address: local.address,
+        role: 'local (pre-signed)',
+        sigPreview: localSigReturned ? toBase64(localSigReturned).slice(0, 16) + '…' : 'no sig',
+        valid: localValid,
+      },
+    };
+  }
+
+  // web3.js path — uses wallet-adapter-react's signAllTransactions on our CherryWalletAdapter
+  const tx = await buildWeb3MultisigTx(cherryPubkey, local.keypair, version);
+  // Capture messageBytes BEFORE Cherry signs so we know exactly what got signed
+  const messageBytes = extractMessageBytes(tx);
+
+  const [signedRaw] = await wallet.signAllTransactions([tx]);
+  const parsed = await parseSignedWeb3(signedRaw!, version);
+
+  const cherryValid = parsed.cherrySig
+    ? await verifySig(parsed.cherrySig, parsed.messageBytes, cherryPubkey)
+    : false;
+  const localValid = parsed.localSig
+    ? await verifySig(parsed.localSig, parsed.messageBytes, local.address)
+    : false;
+
+  return {
+    variant,
+    messageBytesLen: messageBytes.length,
+    slot0: {
+      address: cherryPubkey,
+      role: 'Cherry (fee payer)',
+      sigPreview: parsed.cherrySig ? toBase64(parsed.cherrySig).slice(0, 16) + '…' : 'no sig',
+      valid: cherryValid,
+    },
+    slot1: {
+      address: local.address,
+      role: 'local (pre-signed)',
+      sigPreview: parsed.localSig ? toBase64(parsed.localSig).slice(0, 16) + '…' : 'no sig',
+      valid: localValid,
+    },
+  };
+}
+
+/** Build a 2-signer web3.js tx: cherry = slot 0 (fee payer), local = slot 1 (pre-signed). */
+async function buildWeb3MultisigTx(
+  cherryPubkey: string,
+  localKp: import('@solana/web3.js').Keypair,
+  version: 'legacy' | 'v0',
+): Promise<import('@solana/web3.js').Transaction | import('@solana/web3.js').VersionedTransaction> {
+  const {
+    Transaction,
+    VersionedTransaction,
+    TransactionMessage,
+    SystemProgram,
+    PublicKey,
+  } = await import('@solana/web3.js');
+  const cherry = new PublicKey(cherryPubkey);
+  const ix1 = SystemProgram.transfer({ fromPubkey: cherry, toPubkey: cherry, lamports: 0 });
+  const ix2 = SystemProgram.transfer({ fromPubkey: localKp.publicKey, toPubkey: cherry, lamports: 0 });
+
+  if (version === 'v0') {
+    const msg = new TransactionMessage({
+      payerKey: cherry,
+      recentBlockhash: DUMMY_BLOCKHASH,
+      instructions: [ix1, ix2],
+    }).compileToV0Message();
+    const tx = new VersionedTransaction(msg);
+    const sig = await localSign(tx.message.serialize(), localKp.secretKey.slice(0, 32));
+    tx.addSignature(localKp.publicKey, sig);
+    return tx;
+  }
+
+  const tx = new Transaction().add(ix1, ix2);
+  tx.recentBlockhash = DUMMY_BLOCKHASH;
+  tx.feePayer = cherry;
+  tx.partialSign(localKp);
+  return tx;
+}
+
+function extractMessageBytes(
+  tx: import('@solana/web3.js').Transaction | import('@solana/web3.js').VersionedTransaction,
+): Uint8Array {
+  // Lazy check for VersionedTransaction via presence of `message.staticAccountKeys`
+  const maybeMsg = (tx as { message?: { staticAccountKeys?: unknown; serialize?: () => Uint8Array } }).message;
+  if (maybeMsg && 'staticAccountKeys' in maybeMsg && typeof maybeMsg.serialize === 'function') {
+    return maybeMsg.serialize();
+  }
+  return (tx as { serializeMessage(): Uint8Array }).serializeMessage();
+}
+
+/** Parse the signed wire bytes returned from the host, extract messageBytes + sig per slot. */
+async function parseSignedWeb3(
+  signedWire: Uint8Array,
+  version: 'legacy' | 'v0',
+): Promise<{ messageBytes: Uint8Array; cherrySig: Uint8Array | null; localSig: Uint8Array | null }> {
+  const { VersionedTransaction, Transaction } = await import('@solana/web3.js');
+
+  if (version === 'v0') {
+    const vtx = VersionedTransaction.deserialize(signedWire);
+    const messageBytes = vtx.message.serialize();
+    const slot0 = vtx.signatures[0];
+    const slot1 = vtx.signatures[1];
+    return {
+      messageBytes,
+      cherrySig: slot0 && slot0.some((b) => b !== 0) ? slot0 : null,
+      localSig: slot1 && slot1.some((b) => b !== 0) ? slot1 : null,
+    };
+  }
+
+  const ltx = Transaction.from(signedWire);
+  const messageBytes = ltx.serializeMessage();
+  const slot0 = ltx.signatures[0]?.signature ?? null;
+  const slot1 = ltx.signatures[1]?.signature ?? null;
+  return {
+    messageBytes,
+    cherrySig: slot0 && slot0.some((b) => b !== 0) ? new Uint8Array(slot0) : null,
+    localSig: slot1 && slot1.some((b) => b !== 0) ? new Uint8Array(slot1) : null,
+  };
+}
+
+/** Build kit messageBytes with 2 signers: cherry (fee payer) + local (pre-signed via second transfer). */
+async function buildKitMultisigMessageBytes(
+  cherryPubkeyStr: string,
+  localPubkeyStr: string,
+  version: 'legacy' | 'v0',
+): Promise<Uint8Array> {
+  const {
+    address,
+    createNoopSigner,
+    createTransactionMessage,
+    setTransactionMessageFeePayerSigner,
+    setTransactionMessageLifetimeUsingBlockhash,
+    appendTransactionMessageInstructions,
+    compileTransaction,
+    pipe,
+    lamports,
+  } = await import('@solana/kit');
+  const { getTransferSolInstruction } = await import('@solana-program/system');
+
+  const cherrySigner = createNoopSigner(address(cherryPubkeyStr));
+  const localSigner = createNoopSigner(address(localPubkeyStr));
+  const lifetime = {
+    blockhash: DUMMY_BLOCKHASH as unknown as Blockhash,
+    lastValidBlockHeight: 0n,
+  };
+
+  const message = pipe(
+    createTransactionMessage({ version: version === 'v0' ? 0 : 'legacy' }),
+    (m) => setTransactionMessageFeePayerSigner(cherrySigner, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash(lifetime, m),
+    (m) =>
+      appendTransactionMessageInstructions(
+        [
+          getTransferSolInstruction({
+            source: cherrySigner,
+            destination: address(cherryPubkeyStr),
+            amount: lamports(0n),
+          }),
+          getTransferSolInstruction({
+            source: localSigner,
+            destination: address(cherryPubkeyStr),
+            amount: lamports(0n),
+          }),
+        ],
+        m,
+      ),
+  );
+
+  const compiled = compileTransaction(message);
+  return compiled.messageBytes as unknown as Uint8Array;
 }
 
 // ============================================================================
