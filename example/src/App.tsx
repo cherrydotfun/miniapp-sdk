@@ -26,6 +26,9 @@ export function App() {
   // Tab state
   const [activeTab, setActiveTab] = useState<'web3js' | 'kit'>('web3js');
 
+  // Transaction version (legacy or versioned v0) — applied to all tx-building handlers
+  const [txVersion, setTxVersion] = useState<'legacy' | 'v0'>('legacy');
+
   // Navigate state (shared)
   const [navResult, setNavResult] = useState<string | null>(null);
   const [navError, setNavError] = useState<string | null>(null);
@@ -118,11 +121,38 @@ export function App() {
         </button>
       </div>
 
+      {/* Transaction version switcher */}
+      <div style={styles.card}>
+        <div style={{ ...styles.sectionHeader, marginBottom: 8 }}>
+          <h2 style={styles.heading}>Transaction Version</h2>
+          <span style={styles.libBadge}>applies to all sign-tx calls</span>
+        </div>
+        <div style={styles.tabBar}>
+          <button
+            style={txVersion === 'legacy' ? styles.tabActive : styles.tab}
+            onClick={() => setTxVersion('legacy')}
+          >
+            Legacy
+          </button>
+          <button
+            style={txVersion === 'v0' ? styles.tabActive : styles.tab}
+            onClick={() => setTxVersion('v0')}
+          >
+            Versioned (v0)
+          </button>
+        </div>
+        <p style={{ ...styles.hint, marginTop: 8 }}>
+          {txVersion === 'legacy'
+            ? 'Builds plain Transaction (no version prefix).'
+            : 'Builds VersionedTransaction with MessageV0 (0x80 version byte).'}
+        </p>
+      </div>
+
       {/* Solana-specific sections */}
       {activeTab === 'web3js' ? (
-        <Web3JsSection wallet={cherryWallet} publicKey={cherryWallet.publicKey} />
+        <Web3JsSection wallet={cherryWallet} publicKey={cherryWallet.publicKey} txVersion={txVersion} />
       ) : (
-        <KitSection publicKey={cherryWallet.publicKey} />
+        <KitSection publicKey={cherryWallet.publicKey} txVersion={txVersion} />
       )}
 
       {/* Navigation (shared) */}
@@ -153,10 +183,68 @@ export function App() {
 }
 
 // ============================================================================
+// Transaction builders (shared between web3.js and kit sections)
+// ============================================================================
+
+const DUMMY_BLOCKHASH = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
+
+/**
+ * Build a transaction (legacy `Transaction` or `VersionedTransaction` with
+ * MessageV0) containing a single self-transfer of `lamports`.
+ */
+async function buildWeb3Tx(
+  publicKey: string,
+  lamports: number,
+  version: 'legacy' | 'v0',
+): Promise<unknown> {
+  const {
+    Transaction,
+    VersionedTransaction,
+    TransactionMessage,
+    SystemProgram,
+    PublicKey,
+  } = await import('@solana/web3.js');
+  const pk = new PublicKey(publicKey);
+  const ix = SystemProgram.transfer({ fromPubkey: pk, toPubkey: pk, lamports });
+
+  if (version === 'v0') {
+    const message = new TransactionMessage({
+      payerKey: pk,
+      recentBlockhash: DUMMY_BLOCKHASH,
+      instructions: [ix],
+    }).compileToV0Message();
+    return new VersionedTransaction(message);
+  }
+
+  const tx = new Transaction().add(ix);
+  tx.recentBlockhash = DUMMY_BLOCKHASH;
+  tx.feePayer = pk;
+  return tx;
+}
+
+/**
+ * Build raw `messageBytes` (the compiled message body, including the v0 prefix
+ * for versioned) suitable for `signer.signTransactions([{ messageBytes, ... }])`.
+ */
+async function buildKitMessageBytes(
+  publicKey: string,
+  lamports: number,
+  version: 'legacy' | 'v0',
+): Promise<Uint8Array> {
+  const tx = await buildWeb3Tx(publicKey, lamports, version);
+  const { VersionedTransaction } = await import('@solana/web3.js');
+  if (tx instanceof VersionedTransaction) {
+    return tx.message.serialize();
+  }
+  // legacy Transaction.serializeMessage() returns the unsigned message bytes
+  return (tx as { serializeMessage(): Uint8Array }).serializeMessage();
+}
+
+// ============================================================================
 // @solana/web3.js section
 // ============================================================================
 
-function Web3JsSection({ wallet, publicKey }: {
+function Web3JsSection({ wallet, publicKey, txVersion }: {
   wallet: {
     signMessage: (m: Uint8Array) => Promise<Uint8Array>;
     signTransaction: (tx: unknown) => Promise<unknown>;
@@ -164,6 +252,7 @@ function Web3JsSection({ wallet, publicKey }: {
     connected: boolean;
   };
   publicKey: string | null;
+  txVersion: 'legacy' | 'v0';
 }) {
   const [signMsgResult, setSignMsgResult] = useState<string | null>(null);
   const [signMsgLoading, setSignMsgLoading] = useState(false);
@@ -188,14 +277,9 @@ function Web3JsSection({ wallet, publicKey }: {
   const handleSignTransaction = async () => {
     setSignTxLoading(true); setSignTxError(null); setSignTxResult(null);
     try {
-      const { Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
-      const tx = new Transaction().add(
-        SystemProgram.transfer({ fromPubkey: new PublicKey(publicKey!), toPubkey: new PublicKey(publicKey!), lamports: 0 })
-      );
-      tx.recentBlockhash = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
-      tx.feePayer = new PublicKey(publicKey!);
+      const tx = await buildWeb3Tx(publicKey!, 0, txVersion);
       const signed = await wallet.signTransaction(tx);
-      setSignTxResult(`Signed ${(signed as Uint8Array).length} bytes`);
+      setSignTxResult(`[${txVersion}] Signed ${(signed as Uint8Array).length} bytes`);
     } catch (err) { setSignTxError(err instanceof Error ? err.message : String(err)); }
     finally { setSignTxLoading(false); }
   };
@@ -203,23 +287,14 @@ function Web3JsSection({ wallet, publicKey }: {
   const handleSignAllTransactions = async () => {
     setSignAllLoading(true); setSignAllError(null); setSignAllResult(null);
     try {
-      const { Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
-      const pk = new PublicKey(publicKey!);
-      const txs = [1, 2, 3].map((i) => {
-        const tx = new Transaction().add(
-          SystemProgram.transfer({ fromPubkey: pk, toPubkey: pk, lamports: i })
-        );
-        tx.recentBlockhash = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
-        tx.feePayer = pk;
-        return tx;
-      });
+      const txs = await Promise.all([1, 2, 3].map((i) => buildWeb3Tx(publicKey!, i, txVersion)));
       const signed = await wallet.signAllTransactions(txs);
       const details = signed.map((tx, i) => {
         const bytes = tx as Uint8Array;
         const hasSig = bytes.length > 65 && bytes.slice(1, 65).some((b) => b !== 0);
         return `tx${i + 1}: ${hasSig ? toBase64(bytes.slice(1, 65)).slice(0, 16) + '...' : 'no sig'}`;
       });
-      setSignAllResult(`${signed.length} txs signed\n${details.join('\n')}`);
+      setSignAllResult(`[${txVersion}] ${signed.length} txs signed\n${details.join('\n')}`);
     } catch (err) { setSignAllError(err instanceof Error ? err.message : String(err)); }
     finally { setSignAllLoading(false); }
   };
@@ -276,7 +351,7 @@ const signed = await signAllTransactions([tx1, tx2, tx3]);`}</CodeBlock>
 // @solana/kit section
 // ============================================================================
 
-function KitSection({ publicKey }: { publicKey: string | null }) {
+function KitSection({ publicKey, txVersion }: { publicKey: string | null; txVersion: 'legacy' | 'v0' }) {
   const app = useCherryApp();
   const [signerInfo, setSignerInfo] = useState<string | null>(null);
   const [signMsgResult, setSignMsgResult] = useState<string | null>(null);
@@ -315,24 +390,14 @@ function KitSection({ publicKey }: { publicKey: string | null }) {
     setSignTxLoading(true); setSignTxError(null); setSignTxResult(null);
     try {
       const signer = createCherrySigner(app);
-      const { Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(publicKey),
-          toPubkey: new PublicKey(publicKey),
-          lamports: 0,
-        })
-      );
-      tx.recentBlockhash = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
-      tx.feePayer = new PublicKey(publicKey);
-      const messageBytes = tx.serializeMessage();
+      const messageBytes = await buildKitMessageBytes(publicKey, 0, txVersion);
 
       const [signed] = await signer.signTransactions([{
         messageBytes,
         signatures: {},
       }]);
       const hasSig = signed!.signatures[signer.address];
-      setSignTxResult(`Signed! sig: ${hasSig ? toBase64(hasSig).slice(0, 32) + '...' : 'none'}`);
+      setSignTxResult(`[${txVersion}] sig: ${hasSig ? toBase64(hasSig).slice(0, 32) + '...' : 'none'}`);
     } catch (err) { setSignTxError(err instanceof Error ? err.message : String(err)); }
     finally { setSignTxLoading(false); }
   };
@@ -342,24 +407,17 @@ function KitSection({ publicKey }: { publicKey: string | null }) {
     setSignBatchLoading(true); setSignBatchError(null); setSignBatchResult(null);
     try {
       const signer = createCherrySigner(app);
-      const { Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
-      const pk = new PublicKey(publicKey);
-
-      const txInputs = [1, 2, 3].map((i) => {
-        const tx = new Transaction().add(
-          SystemProgram.transfer({ fromPubkey: pk, toPubkey: pk, lamports: i })
-        );
-        tx.recentBlockhash = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
-        tx.feePayer = pk;
-        return { messageBytes: tx.serializeMessage(), signatures: {} };
-      });
+      const txInputs = await Promise.all([1, 2, 3].map(async (i) => ({
+        messageBytes: await buildKitMessageBytes(publicKey, i, txVersion),
+        signatures: {},
+      })));
 
       const signed = await signer.signTransactions(txInputs);
       const details = signed.map((s, i) => {
         const sig = s.signatures[signer.address];
         return `tx${i + 1}: ${sig ? toBase64(sig).slice(0, 16) + '...' : 'no sig'}`;
       });
-      setSignBatchResult(`${signed.length} txs signed\n${details.join('\n')}`);
+      setSignBatchResult(`[${txVersion}] ${signed.length} txs signed\n${details.join('\n')}`);
     } catch (err) { setSignBatchError(err instanceof Error ? err.message : String(err)); }
     finally { setSignBatchLoading(false); }
   };
