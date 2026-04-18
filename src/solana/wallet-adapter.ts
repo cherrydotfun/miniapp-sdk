@@ -84,7 +84,9 @@ export class CherryWalletAdapter extends BaseWalletAdapter {
       const bridge = getSharedBridge();
       const serialized = serializeTxToBase64(tx);
       const result = await bridge.request('wallet.signTransaction', { transaction: serialized });
-      return deserializeTxFromBase64(result as string, tx) as T;
+      // Host responds with { transaction: "<base64>" } (V2) or a raw base64 string (legacy).
+      const signedBase64 = (result as Record<string, unknown>)?.['transaction'] ?? result;
+      return deserializeTxFromBase64(signedBase64 as string, tx) as T;
     } catch (error) {
       throw new WalletSignTransactionError((error as Error).message, error as Error);
     }
@@ -113,7 +115,9 @@ export class CherryWalletAdapter extends BaseWalletAdapter {
       const bridge = getSharedBridge();
       const base64 = uint8ArrayToBase64(message);
       const result = await bridge.request('wallet.signMessage', { message: base64 });
-      return base64ToUint8Array(result as string);
+      // Host responds with { signature: "<base64>" } (V2) or a raw base64 string (legacy).
+      const sig = (result as Record<string, unknown>)?.['signature'] ?? result;
+      return base64ToUint8Array(sig as string);
     } catch (error) {
       throw new WalletSignMessageError((error as Error).message, error as Error);
     }
@@ -130,9 +134,11 @@ export class CherryWalletAdapter extends BaseWalletAdapter {
     try {
       const bridge = getSharedBridge();
       const serialized = serializeTxToBase64(tx);
-      const signature = await bridge.request('wallet.signAndSendTransaction', {
+      const result = await bridge.request('wallet.signAndSendTransaction', {
         transaction: serialized,
       });
+      // Host responds with { signature: "<base58>" } (V2) or a raw signature string (legacy).
+      const signature = (result as Record<string, unknown>)?.['signature'] ?? result;
       return signature as string;
     } catch (error) {
       throw new WalletSendTransactionError((error as Error).message, error as Error);
