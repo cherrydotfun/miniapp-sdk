@@ -735,63 +735,42 @@ async function runMultisigTest(
     const messageBytes = await buildKitMultisigMessageBytes(cherryPubkey, local.address, version);
     const localSigBytes = await localSign(messageBytes, local.secret32);
 
-    // Call the bridge directly so we can inspect the raw signed wire that the
-    // host returns — this lets us detect whether the host/wallet mutated the
-    // messageBytes during signing (a common cause of "my sig is Invalid").
-    const { getSharedBridge } = await import('@cherrydotfun/miniapp-sdk');
-    const bridge = getSharedBridge();
-    const sigCountBytes = new Uint8Array([2]); // compact-u16: 2 signatures
-    const wire = new Uint8Array(sigCountBytes.length + 2 * 64 + messageBytes.length);
-    wire.set(sigCountBytes, 0);
-    // sig slot 0 (cherry) left zero
-    // sig slot 1 (local) left zero — kit signer does NOT forward pre-existing sigs into the wire
-    wire.set(messageBytes, sigCountBytes.length + 2 * 64);
-    const rawResult = await bridge.request('wallet.signTransactions', {
-      transactions: [toBase64(wire)],
-    });
-    const signedBase64 = ((rawResult as Record<string, unknown>)?.['transactions'] as string[])?.[0];
-    if (!signedBase64) throw new Error('Host did not return a signed transaction');
+    // Go through the SDK's kit signer (what a real integrator would use).
+    // It is responsible for packing pre-existing signatures into the wire
+    // so the host doesn't treat the tx as "freshly built and re-compile it".
+    const signer = createCherrySigner(app);
+    const [signed] = await signer.signTransactions([{
+      messageBytes,
+      signatures: { [local.address]: localSigBytes },
+    }]);
 
-    const signedWire = await decodeBase64(signedBase64);
-    const msgStartReturned = sigCountBytes.length + 2 * 64;
-    const returnedMessageBytes = signedWire.slice(msgStartReturned);
-    const messageBytesIntact = bytesEqualU8(returnedMessageBytes, messageBytes);
-    const firstDiffAt = messageBytesIntact ? undefined : firstDifference(returnedMessageBytes, messageBytes);
+    const cherrySig = signed!.signatures[signer.address] as Uint8Array | undefined;
+    const localSigReturned = signed!.signatures[local.address] as Uint8Array | undefined;
 
-    const cherrySig = signedWire.slice(1, 65);
-    const localSigReturned = signedWire.slice(65, 129);
-    const hasCherrySig = cherrySig.some((b) => b !== 0);
-    const hasLocalSig = localSigReturned.some((b) => b !== 0);
-
-    const cherryValid = hasCherrySig ? await verifySig(cherrySig, messageBytes, cherryPubkey) : false;
-    const cherryValidAgainstReturned = hasCherrySig && !messageBytesIntact
-      ? await verifySig(cherrySig, returnedMessageBytes, cherryPubkey)
-      : undefined;
-    const localValid = hasLocalSig ? await verifySig(localSigReturned, messageBytes, local.address) : false;
-    // Use our (unchanged) local sig as authoritative for slot 1 verification;
-    // if the host returned a different one, note it in the preview.
-    const localValidPre = await verifySig(localSigBytes, messageBytes, local.address);
+    // The kit signer returns {messageBytes: original, signatures: {...}} — we
+    // have no access to the host-returned messageBytes here. To still detect
+    // mutation, we separately verify Cherry's sig against the original.
+    // If it's invalid, the host mutated the tx (or the wallet signed wrong bytes).
+    const cherryValid = cherrySig ? await verifySig(cherrySig, messageBytes, cherryPubkey) : false;
+    const localValid = localSigReturned ? await verifySig(localSigReturned, messageBytes, local.address) : false;
 
     return {
       variant,
       messageBytesLen: messageBytes.length,
-      messageBytesIntact,
-      firstDiffAt: firstDiffAt === -1 ? undefined : firstDiffAt,
+      messageBytesIntact: cherryValid,
+      firstDiffAt: undefined,
       slot0: {
         address: cherryPubkey,
         role: 'Cherry (fee payer)',
-        sigPreview: hasCherrySig ? toBase64(cherrySig).slice(0, 16) + '…' : 'no sig',
+        sigPreview: cherrySig ? toBase64(cherrySig).slice(0, 16) + '…' : 'no sig',
         valid: cherryValid,
       },
       slot1: {
         address: local.address,
         role: 'local (pre-signed)',
-        sigPreview: hasLocalSig
-          ? toBase64(localSigReturned).slice(0, 16) + '…'
-          : (localValidPre ? toBase64(localSigBytes).slice(0, 16) + '… (local)' : 'no sig'),
-        valid: hasLocalSig ? localValid : localValidPre,
+        sigPreview: localSigReturned ? toBase64(localSigReturned).slice(0, 16) + '…' : 'no sig',
+        valid: localValid,
       },
-      cherryValidAgainstReturned,
     };
   }
 

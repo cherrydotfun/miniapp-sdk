@@ -181,29 +181,60 @@ export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSign
       // Build a correctly-sized wire format for each transaction and
       // pre-compute which slot index belongs to Cherry.
       //
-      // Wire: [compact-u16 sigCount] [sigCount * 64 zero bytes] [messageBytes]
-      // sigCount MUST equal `numRequiredSignatures` from the message header,
-      // otherwise the host's `VersionedTransaction.deserialize` produces a
-      // transaction whose sig-array length doesn't match its header — the
-      // wallet then either refuses to sign or returns a malformed tx.
+      // Wire: [compact-u16 sigCount] [sigCount * 64 signature bytes] [messageBytes]
+      //
+      // Two critical requirements:
+      //   1. sigCount MUST equal `numRequiredSignatures` from the message header,
+      //      otherwise `VersionedTransaction.deserialize` produces a transaction
+      //      whose sig-array length doesn't match its header.
+      //   2. Pre-existing signatures from `tx.signatures` MUST be packed into
+      //      their correct slots. If we send all-zero signatures, some wallets
+      //      treat the tx as freshly-built and re-compile it (changing the
+      //      header / byte layout), which breaks Cherry's own signature since
+      //      it's computed over the re-compiled bytes but the caller only has
+      //      the ORIGINAL messageBytes to verify against.
       const txMeta = transactions.map((tx, txIndex) => {
         const sigCount = readNumRequiredSignatures(tx.messageBytes);
         const signerPubkeys = parseSignerPubkeys(tx.messageBytes, sigCount);
         const cherrySlot = signerPubkeys.findIndex((pk) => bytesEqual(pk, cherryPubkeyBytes));
         if (cherrySlot < 0) {
           throw new Error(
-            `Cherry wallet (${address}) is not a required signer for transaction #${txIndex}. ` +
-              `Signers are: ${signerPubkeys.map((_, i) => `[${i}] <32 bytes>`).join(', ')}`,
+            `Cherry wallet (${address}) is not a required signer for transaction #${txIndex}.`,
           );
         }
+
+        // Resolve each signer slot: for every signer pubkey, look up a
+        // pre-existing signature in tx.signatures by matching decoded
+        // base58 → raw 32-byte pubkey. Cherry's slot stays zero.
+        const signatureEntries: Array<[Uint8Array, Uint8Array]> = [];
+        for (const [addrKey, sigValue] of Object.entries(tx.signatures)) {
+          if (!sigValue) continue;
+          try {
+            signatureEntries.push([decodeBase58(addrKey), sigValue as Uint8Array]);
+          } catch {
+            // Skip malformed addresses silently — they won't match anyway.
+          }
+        }
+        const sigSlots: Uint8Array[] = signerPubkeys.map((pk, slotIdx) => {
+          if (slotIdx === cherrySlot) return new Uint8Array(64);
+          const match = signatureEntries.find(([pubkey]) => bytesEqual(pubkey, pk));
+          return match ? match[1] : new Uint8Array(64);
+        });
 
         const sigCountBytes = encodeCompactU16(sigCount);
         const wireBytes = new Uint8Array(
           sigCountBytes.length + 64 * sigCount + tx.messageBytes.length,
         );
         wireBytes.set(sigCountBytes, 0);
-        // Leave all sig slots as zeros — the host wallet fills its slot.
-        wireBytes.set(tx.messageBytes, sigCountBytes.length + 64 * sigCount);
+        let offset = sigCountBytes.length;
+        for (const slot of sigSlots) {
+          if (slot.length !== 64) {
+            throw new Error(`Invalid signature length (expected 64, got ${slot.length})`);
+          }
+          wireBytes.set(slot, offset);
+          offset += 64;
+        }
+        wireBytes.set(tx.messageBytes, offset);
         return { wireBytes, sigCount, sigStart: sigCountBytes.length, cherrySlot };
       });
 
