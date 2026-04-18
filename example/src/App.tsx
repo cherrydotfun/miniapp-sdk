@@ -7,6 +7,7 @@ import {
   useCherryEnvironment,
 } from '@cherrydotfun/miniapp-sdk/react';
 import { createCherrySigner, type CherryTransactionSigner } from '@cherrydotfun/miniapp-sdk/kit';
+import type { Blockhash } from '@solana/kit';
 import { RawSignals } from './StandaloneView';
 
 function toBase64(arr: Uint8Array): string {
@@ -225,19 +226,51 @@ async function buildWeb3Tx(
 /**
  * Build raw `messageBytes` (the compiled message body, including the v0 prefix
  * for versioned) suitable for `signer.signTransactions([{ messageBytes, ... }])`.
+ *
+ * Uses `@solana/kit` and `@solana-program/system` — the idiomatic path for
+ * modern Solana apps that want a tree-shakable, web3.js-free stack.
  */
 async function buildKitMessageBytes(
-  publicKey: string,
-  lamports: number,
+  publicKeyStr: string,
+  transferLamports: number,
   version: 'legacy' | 'v0',
 ): Promise<Uint8Array> {
-  const tx = await buildWeb3Tx(publicKey, lamports, version);
-  const { VersionedTransaction } = await import('@solana/web3.js');
-  if (tx instanceof VersionedTransaction) {
-    return tx.message.serialize();
-  }
-  // legacy Transaction.serializeMessage() returns the unsigned message bytes
-  return (tx as { serializeMessage(): Uint8Array }).serializeMessage();
+  const {
+    address,
+    createNoopSigner,
+    createTransactionMessage,
+    setTransactionMessageFeePayerSigner,
+    setTransactionMessageLifetimeUsingBlockhash,
+    appendTransactionMessageInstruction,
+    compileTransaction,
+    pipe,
+    lamports,
+  } = await import('@solana/kit');
+  const { getTransferSolInstruction } = await import('@solana-program/system');
+
+  const signer = createNoopSigner(address(publicKeyStr));
+  const lifetime = {
+    blockhash: DUMMY_BLOCKHASH as unknown as Blockhash,
+    lastValidBlockHeight: 0n,
+  };
+
+  const message = pipe(
+    createTransactionMessage({ version: version === 'v0' ? 0 : 'legacy' }),
+    (m) => setTransactionMessageFeePayerSigner(signer, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash(lifetime, m),
+    (m) =>
+      appendTransactionMessageInstruction(
+        getTransferSolInstruction({
+          source: signer,
+          destination: address(publicKeyStr),
+          amount: lamports(BigInt(transferLamports)),
+        }),
+        m,
+      ),
+  );
+
+  const compiled = compileTransaction(message);
+  return compiled.messageBytes as unknown as Uint8Array;
 }
 
 // ============================================================================

@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@cherrydotfun/miniapp-sdk": "file:..",
+    "@solana-program/system": "^0.12.0",
+    "@solana/kit": "^6.8.0",
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-react-ui": "^0.9.35",
@@ -21,9 +23,9 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
-    "vite": "^6.0.0",
-    "@vitejs/plugin-react": "^4.3.0"
+    "vite": "^6.0.0"
   }
 }
