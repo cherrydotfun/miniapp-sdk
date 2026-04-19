@@ -439,8 +439,9 @@ function KitSection({ publicKey, txVersion }: { publicKey: string | null; txVers
         messageBytes,
         signatures: {},
       }]);
-      const hasSig = signed!.signatures[signer.address];
-      setSignTxResult(`[${txVersion}] sig: ${hasSig ? toBase64(hasSig).slice(0, 32) + '...' : 'none'}`);
+      const sig = signed!.signatures[signer.address] as Uint8Array | undefined;
+      const valid = sig ? await verifySig(sig, messageBytes, publicKey) : false;
+      setSignTxResult(`[${txVersion}] ${valid ? '✓ VALID' : '✗ INVALID'} sig: ${sig ? toBase64(sig).slice(0, 32) + '…' : 'none'}`);
     } catch (err) { setSignTxError(err instanceof Error ? err.message : String(err)); }
     finally { setSignTxLoading(false); }
   };
@@ -456,10 +457,11 @@ function KitSection({ publicKey, txVersion }: { publicKey: string | null; txVers
       })));
 
       const signed = await signer.signTransactions(txInputs);
-      const details = signed.map((s, i) => {
-        const sig = s.signatures[signer.address];
-        return `tx${i + 1}: ${sig ? toBase64(sig).slice(0, 16) + '...' : 'no sig'}`;
-      });
+      const details = await Promise.all(signed.map(async (s, i) => {
+        const sig = s.signatures[signer.address] as Uint8Array | undefined;
+        const valid = sig ? await verifySig(sig, txInputs[i]!.messageBytes, publicKey) : false;
+        return `tx${i + 1}: ${valid ? '✓' : '✗'} ${sig ? toBase64(sig).slice(0, 16) + '…' : 'no sig'}`;
+      }));
       setSignBatchResult(`[${txVersion}] ${signed.length} txs signed\n${details.join('\n')}`);
     } catch (err) { setSignBatchError(err instanceof Error ? err.message : String(err)); }
     finally { setSignBatchLoading(false); }
