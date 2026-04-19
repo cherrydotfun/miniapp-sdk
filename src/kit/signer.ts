@@ -205,7 +205,21 @@ export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSign
 
         // Resolve each signer slot: for every signer pubkey, look up a
         // pre-existing signature in tx.signatures by matching decoded
-        // base58 → raw 32-byte pubkey. Cherry's slot stays zero.
+        // base58 → raw 32-byte pubkey.
+        //
+        // IMPORTANT: Cherry's slot gets filled with **random non-zero bytes**
+        // rather than zeros. Reason: some mobile wallet adapters (MWA / wallet
+        // apps on Android) re-compile the transaction from scratch when they
+        // see a wire with all-zero signature slots, treating it as "freshly
+        // built". The re-compilation changes the message header (e.g.
+        // numReadonlyUnsignedAccounts), so Cherry ends up signing different
+        // bytes than what the caller passed in — producing an on-chain-invalid
+        // signature.
+        //
+        // Filling Cherry's slot with non-zero bytes makes the wire look
+        // "partially signed" to the wallet, which prevents re-compilation.
+        // The wallet always overwrites its own slot with its real signature,
+        // so the placeholder is harmless.
         const signatureEntries: Array<[Uint8Array, Uint8Array]> = [];
         for (const [addrKey, sigValue] of Object.entries(tx.signatures)) {
           if (!sigValue) continue;
@@ -216,7 +230,11 @@ export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSign
           }
         }
         const sigSlots: Uint8Array[] = signerPubkeys.map((pk, slotIdx) => {
-          if (slotIdx === cherrySlot) return new Uint8Array(64);
+          if (slotIdx === cherrySlot) {
+            const placeholder = new Uint8Array(64);
+            crypto.getRandomValues(placeholder);
+            return placeholder;
+          }
           const match = signatureEntries.find(([pubkey]) => bytesEqual(pubkey, pk));
           return match ? match[1] : new Uint8Array(64);
         });
