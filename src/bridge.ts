@@ -34,7 +34,7 @@ interface SdkBridgeDebug {
   received: Array<{ ts: number; type: string; isResponse: boolean }>;
 }
 
-const SDK_BRIDGE_BUILD = 'sdk-bridge-v2-2026-05-06';
+const SDK_BRIDGE_BUILD = 'sdk-bridge-v4-platform-fix-2026-05-06';
 
 function getSdkDebug(): SdkBridgeDebug | null {
   if (typeof window === 'undefined') return null;
@@ -182,18 +182,27 @@ export class Bridge {
       return;
     }
     // Forward transient user activation to the host so wallets that require
-    // a user gesture (notably Phantom mobile in-app browser) actually display
-    // the approval prompt. Older browsers do not understand the options bag —
-    // fall back to the legacy string-targetOrigin signature.
-    let mode: 'options' | 'legacy' = 'options';
-    try {
-      window.parent.postMessage(message, {
-        targetOrigin: '*',
-        transferUserActivation: true,
-      } as WindowPostMessageOptions);
-    } catch (err) {
-      mode = 'legacy';
-      if (dbg) dbg.lastSendError = err instanceof Error ? err.message : String(err);
+    // a user gesture actually display the approval prompt. The options bag
+    // is the only way to do that, but Phantom mobile WKWebView silently
+    // drops messages sent with that signature (no exception thrown) — so for
+    // Phantom in-app we always use the legacy string-targetOrigin form.
+    // Older browsers that do not understand the options bag throw
+    // synchronously; we fall back the same way for them.
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    const isPhantomInApp = /\bPhantom(Browser)?\/\d/i.test(ua);
+    let mode: 'options' | 'legacy' = isPhantomInApp ? 'legacy' : 'options';
+    if (mode === 'options') {
+      try {
+        window.parent.postMessage(message, {
+          targetOrigin: '*',
+          transferUserActivation: true,
+        } as WindowPostMessageOptions);
+      } catch (err) {
+        mode = 'legacy';
+        if (dbg) dbg.lastSendError = err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (mode === 'legacy') {
       try {
         window.parent.postMessage(message, '*');
       } catch (err2) {
@@ -202,7 +211,7 @@ export class Bridge {
           dbg.lastSendError = err2 instanceof Error ? err2.message : String(err2);
         }
         // eslint-disable-next-line no-console
-        console.error('[cherry-sdk bridge] postMessage failed in both modes:', err2);
+        console.error('[cherry-sdk bridge] postMessage failed in legacy mode:', err2);
         return;
       }
     }
