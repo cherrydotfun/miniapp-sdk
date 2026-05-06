@@ -53,6 +53,7 @@ export function App() {
           <h2 style={styles.heading}>Connection Error</h2>
           <p style={styles.errorText}>{error.message}</p>
           <p style={styles.hint}>Make sure this app is running inside Cherry messenger.</p>
+          <SdkBridgeDebugBlock />
         </div>
         <RawSignals />
       </div>
@@ -65,6 +66,7 @@ export function App() {
         <div style={styles.card}>
           <div style={styles.spinner} />
           <p style={styles.hint}>Connecting to Cherry...</p>
+          <SdkBridgeDebugBlock />
         </div>
         <RawSignals />
       </div>
@@ -1016,3 +1018,74 @@ const styles: Record<string, React.CSSProperties> = {
   tabActive: { flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, color: '#fff', background: '#2a2a2a', border: 'none', borderRadius: 8, cursor: 'pointer' },
   codeBlock: { background: '#0a0a0a', borderRadius: 8, padding: 12, fontSize: 11, fontFamily: 'monospace', color: '#a78bfa', lineHeight: 1.5, overflow: 'auto', margin: '0 0 4px 0', whiteSpace: 'pre' as const },
 };
+
+// ===========================================================================
+// SDK bridge debug — visible while waiting for cherry:init.
+// Shows whatever was logged into window.__cherrySdkBridge so the user can see
+// (without DevTools) whether the SDK loaded, sent cherry:ready, and got an
+// answer from the host. Especially useful in wallet in-app browsers like
+// Backpack where remote debugging is hard to set up.
+// ===========================================================================
+
+interface SdkBridgeDebug {
+  build?: string;
+  sentWebview?: number;
+  sentIframe?: number;
+  lastIframeMode?: 'options' | 'legacy' | 'error' | null;
+  lastSendError?: string | null;
+  sent?: Array<{ ts: number; type: string; method?: string; transport: string; mode?: string }>;
+  received?: Array<{ ts: number; type: string; isResponse: boolean }>;
+}
+
+function readSdkDebug(): SdkBridgeDebug | null {
+  if (typeof window === 'undefined') return null;
+  return (window as unknown as { __cherrySdkBridge?: SdkBridgeDebug }).__cherrySdkBridge ?? null;
+}
+
+function SdkBridgeDebugBlock() {
+  const d = readSdkDebug();
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '?';
+  const lines: string[] = [];
+  lines.push(`UA: ${ua}`);
+  lines.push(`SDK build: ${d?.build ?? '(window.__cherrySdkBridge missing — old SDK?)'}`);
+  lines.push(`sentIframe=${d?.sentIframe ?? 0} sentWebview=${d?.sentWebview ?? 0}`);
+  lines.push(`lastIframeMode=${String(d?.lastIframeMode ?? 'n/a')}`);
+  if (d?.lastSendError) lines.push(`lastSendError=${d.lastSendError}`);
+  const sent = d?.sent ?? [];
+  if (sent.length > 0) {
+    lines.push(`sent (last ${sent.length}):`);
+    for (const s of sent.slice(-5)) {
+      lines.push(`  ${s.transport} ${s.mode ?? ''} ${s.type} ${s.method ?? ''}`);
+    }
+  } else {
+    lines.push('sent: (none)');
+  }
+  const received = d?.received ?? [];
+  if (received.length > 0) {
+    lines.push(`received (last ${received.length}):`);
+    for (const r of received.slice(-5)) {
+      lines.push(`  ${r.type}${r.isResponse ? ' (response)' : ''}`);
+    }
+  } else {
+    lines.push('received: (none) — host has not sent cherry:init yet');
+  }
+  return (
+    <pre
+      style={{
+        background: '#0a0a0a',
+        borderRadius: 8,
+        padding: 10,
+        fontSize: 10,
+        fontFamily: 'ui-monospace,Menlo,monospace',
+        color: '#a3a3a3',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        margin: '12px 0 0 0',
+        maxHeight: 200,
+        overflow: 'auto',
+      }}
+    >
+      {lines.join('\n')}
+    </pre>
+  );
+}

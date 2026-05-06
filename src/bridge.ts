@@ -34,7 +34,7 @@ interface SdkBridgeDebug {
   received: Array<{ ts: number; type: string; isResponse: boolean }>;
 }
 
-const SDK_BRIDGE_BUILD = 'sdk-bridge-v4-platform-fix-2026-05-06';
+const SDK_BRIDGE_BUILD = 'sdk-bridge-v5-wallet-ua-skip-2026-05-06';
 
 function getSdkDebug(): SdkBridgeDebug | null {
   if (typeof window === 'undefined') return null;
@@ -183,14 +183,15 @@ export class Bridge {
     }
     // Forward transient user activation to the host so wallets that require
     // a user gesture actually display the approval prompt. The options bag
-    // is the only way to do that, but Phantom mobile WKWebView silently
-    // drops messages sent with that signature (no exception thrown) — so for
-    // Phantom in-app we always use the legacy string-targetOrigin form.
-    // Older browsers that do not understand the options bag throw
-    // synchronously; we fall back the same way for them.
+    // is the only way to do that, but several wallet in-app browsers run on
+    // older or customised WebViews where options-bag postMessage either
+    // throws synchronously or — worse — is silently dropped. We detect known
+    // wallet WebViews by UA and use the legacy string-targetOrigin form for
+    // them. Cherry-host renders an explicit confirmation overlay for these
+    // wallets, so we don't rely on activation forwarding here anyway.
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-    const isPhantomInApp = /\bPhantom(Browser)?\/\d/i.test(ua);
-    let mode: 'options' | 'legacy' = isPhantomInApp ? 'legacy' : 'options';
+    const isWalletInApp = /\b(Phantom(Browser)?|Solflare(Wallet)?|Backpack|CoinbaseWallet|CipherBrowser|Trust(Wallet)?)\/\d/i.test(ua);
+    let mode: 'options' | 'legacy' = isWalletInApp ? 'legacy' : 'options';
     if (mode === 'options') {
       try {
         window.parent.postMessage(message, {
