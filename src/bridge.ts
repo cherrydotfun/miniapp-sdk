@@ -97,7 +97,18 @@ export class Bridge {
       const rnw = (window as unknown as { ReactNativeWebView?: { postMessage(data: string): void } })
         .ReactNativeWebView;
       rnw?.postMessage(JSON.stringify(message));
-    } else {
+      return;
+    }
+    // Forward transient user activation to the host so wallets that require
+    // a user gesture (notably Phantom mobile in-app browser) actually display
+    // the approval prompt. Older browsers do not understand the options bag —
+    // fall back to the legacy string-targetOrigin signature.
+    try {
+      window.parent.postMessage(message, {
+        targetOrigin: '*',
+        transferUserActivation: true,
+      } as WindowPostMessageOptions);
+    } catch {
       window.parent.postMessage(message, '*');
     }
   }
