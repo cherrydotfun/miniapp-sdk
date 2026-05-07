@@ -39,15 +39,23 @@ export function detectPlatform(options: DetectPlatformOptions = {}): CherryPlatf
 
   if (typeof window === 'undefined') return 'standalone';
 
-  // Mobile WebView — primary signal
+  // Cherry-injected primary signals (fast path, no ambiguity).
   if ((window as unknown as { __cherry?: boolean }).__cherry) return 'webview';
-  // Mobile WebView — fallback (any RN WebView). Skipped in strict mode.
-  if (!strict && (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView) return 'webview';
-
-  // Web iframe — primary signal
   if (new URLSearchParams(window.location.search).get('cherry_embed') === '1') return 'iframe';
-  // Web iframe — fallback (any iframe). Skipped in strict mode.
-  if (!strict && window.parent !== window) return 'iframe';
+
+  if (strict) return 'standalone';
+
+  // Fallback heuristics — order matters:
+  // 1) Any nested iframe is iframe transport. This MUST run before the
+  //    ReactNativeWebView check, otherwise Phantom mobile in-app browser
+  //    (a RN WebView that injects window.ReactNativeWebView and then loads
+  //    Cherry, which loads our miniapp inside an iframe) gets misclassified
+  //    as a Cherry-mobile RN host and the SDK posts to the native bridge
+  //    instead of the parent frame.
+  if (window.parent !== window) return 'iframe';
+  // 2) Top frame with a RN WebView bridge — this is the real Cherry-mobile
+  //    case (miniapp loaded directly by the RN host, no iframe in between).
+  if ((window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView) return 'webview';
 
   return 'standalone';
 }

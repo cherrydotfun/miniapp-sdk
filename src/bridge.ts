@@ -97,9 +97,31 @@ export class Bridge {
       const rnw = (window as unknown as { ReactNativeWebView?: { postMessage(data: string): void } })
         .ReactNativeWebView;
       rnw?.postMessage(JSON.stringify(message));
-    } else {
-      window.parent.postMessage(message, '*');
+      return;
     }
+    // Forward transient user activation to the host so wallets that require
+    // a user gesture actually display the approval prompt. The options bag
+    // is the only way to do that, but several wallet in-app browsers run on
+    // customised WebViews where options-bag postMessage either throws
+    // synchronously or — worse — is silently dropped. We detect known wallet
+    // WebViews by UA and use the legacy string-targetOrigin form for them;
+    // Cherry-host renders an explicit confirmation overlay for these wallets,
+    // so activation forwarding is not required.
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    const isWalletInApp =
+      /\b(Phantom(Browser)?|Solflare(Wallet)?|Backpack|CoinbaseWallet|CipherBrowser|Trust(Wallet)?)\/\d/i.test(ua);
+    if (!isWalletInApp) {
+      try {
+        window.parent.postMessage(message, {
+          targetOrigin: '*',
+          transferUserActivation: true,
+        } as WindowPostMessageOptions);
+        return;
+      } catch {
+        // Old browsers don't support the options bag — fall through.
+      }
+    }
+    window.parent.postMessage(message, '*');
   }
 
   startListening(handler: MessageHandler): () => void {
