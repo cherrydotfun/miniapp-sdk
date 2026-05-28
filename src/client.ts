@@ -75,6 +75,16 @@ export class CherryMiniApp {
   async init(): Promise<void> {
     if (this._isReady) return;
 
+    // Inline blink bootstrap. The inline host (a chat-bubble card) does NOT
+    // push `cherry:init`; it answers a `host.init` request and supplies the
+    // viewer wallet + room/message context. Detected via `mode=inline` in the
+    // launch URL (query or fragment). Fullscreen / embed keep the cherry:init
+    // handshake below.
+    if (readLaunchParam('mode') === 'inline') {
+      await this.initInline();
+      return;
+    }
+
     const initMessage = await this.waitForInit();
 
     // Decode JWT without verification (verification is server-side)
@@ -109,6 +119,67 @@ export class CherryMiniApp {
         this.emit(evt.event as CherryMiniAppEvent, evt.data);
       }
     });
+
+    this._isReady = true;
+  }
+
+  /**
+   * Inline-mode bootstrap. Reads the launch token from the URL and pulls the
+   * viewer/room context from the host via a `host.init` bridge request (the
+   * inline host has no user-bearing token to push, so identity comes from the
+   * host, not the token). The blink's `params`/`messageId`/`route` are also
+   * available on the host.init response and via the launch token claims.
+   */
+  private async initInline(): Promise<void> {
+    const token = readLaunchParam('token');
+
+    let ctx: Record<string, unknown> = {};
+    try {
+      ctx = (await this.bridge.request('host.init', {})) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      // Host didn't answer host.init — leave ctx empty; we still expose
+      // whatever the token carries so the app can render in a degraded state.
+    }
+
+    const viewerWallet =
+      typeof ctx['viewerWallet'] === 'string' ? (ctx['viewerWallet'] as string) : '';
+    let roomId = typeof ctx['roomId'] === 'string' ? (ctx['roomId'] as string) : '';
+
+    this._launchToken = token ?? null;
+    this._publicKey = viewerWallet || null;
+
+    if (token) {
+      try {
+        const payload = decodeJwt(token) as unknown as LaunchTokenPayload;
+        if (!roomId) roomId = String(payload.room_id ?? '');
+      } catch {
+        // opaque token — ignore
+      }
+    }
+
+    this._user = {
+      publicKey: viewerWallet,
+      displayName: '',
+      avatarUrl: '',
+    };
+    this._room = {
+      id: roomId,
+      title: '',
+      memberCount: 0,
+    };
+
+    // Subscribe to host events (blink:update, suspended, etc.).
+    this.removeHostListener = this.bridge.startListening(
+      (message: BridgeMessage) => {
+        if (message['type'] === 'cherry:event') {
+          const evt = message as unknown as BridgeEvent;
+          this.emit(evt.event as CherryMiniAppEvent, evt.data);
+        }
+      },
+    );
 
     this._isReady = true;
   }
@@ -279,6 +350,25 @@ export class CherryMiniApp {
     if (!this._isReady) {
       throw new Error('CherryMiniApp is not ready. Call init() first.');
     }
+  }
+}
+
+// ---- launch URL helpers ----
+
+/**
+ * Read a launch parameter from the current URL — checks the query string first,
+ * then the fragment (`#...`). Inline blinks carry `token`/`mode`/`route` in the
+ * fragment and `cherry_embed=1` in the query; this reads either location.
+ */
+function readLaunchParam(name: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const fromSearch = new URLSearchParams(window.location.search).get(name);
+    if (fromSearch !== null) return fromSearch;
+    const hash = window.location.hash.replace(/^#/, '');
+    return new URLSearchParams(hash).get(name);
+  } catch {
+    return null;
   }
 }
 
