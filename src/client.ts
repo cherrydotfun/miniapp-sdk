@@ -10,6 +10,7 @@ import {
   type CherryRoom,
   type CherryNavigate,
   type LaunchTokenPayload,
+  type CherryBlinkContext,
   type ShareBlinkOptions,
   type ShareBlinkResult,
 } from './types';
@@ -42,6 +43,7 @@ export class CherryMiniApp {
   private _room: CherryRoom | null = null;
   private _launchToken: string | null = null;
   private _publicKey: string | null = null;
+  private _blink: CherryBlinkContext | null = null;
   private readonly initTimeout: number;
 
   constructor(options: CherryMiniAppOptions = {}) {
@@ -68,6 +70,14 @@ export class CherryMiniApp {
   get launchToken(): string {
     this.assertReady();
     return this._launchToken!;
+  }
+
+  /**
+   * Inline blink context (messageId, sender, viewer, params, …) — populated
+   * only when launched as an inline blink. `null` for fullscreen/embed.
+   */
+  get blink(): CherryBlinkContext | null {
+    return this._blink;
   }
 
   // ---- init ----
@@ -147,14 +157,30 @@ export class CherryMiniApp {
     const viewerWallet =
       typeof ctx['viewerWallet'] === 'string' ? (ctx['viewerWallet'] as string) : '';
     let roomId = typeof ctx['roomId'] === 'string' ? (ctx['roomId'] as string) : '';
+    const ctxMessageId =
+      typeof ctx['messageId'] === 'string' ? (ctx['messageId'] as string) : '';
+    const ctxRoute = typeof ctx['route'] === 'string' ? (ctx['route'] as string) : '';
+    const ctxParams =
+      ctx['params'] && typeof ctx['params'] === 'object'
+        ? (ctx['params'] as Record<string, unknown>)
+        : {};
+    const ctxHeight =
+      typeof ctx['height'] === 'string' ? (ctx['height'] as string) : 'medium';
+    const ctxParamsVersion =
+      typeof ctx['blink_params_version'] === 'number'
+        ? (ctx['blink_params_version'] as number)
+        : null;
 
     this._launchToken = token ?? null;
     this._publicKey = viewerWallet || null;
 
+    // Decode the launch token for claims the host.init response doesn't carry
+    // (sender, miniAppId/appId, source, interactive, token timing).
+    let claims: Partial<LaunchTokenPayload> = {};
     if (token) {
       try {
-        const payload = decodeJwt(token) as unknown as LaunchTokenPayload;
-        if (!roomId) roomId = String(payload.room_id ?? '');
+        claims = decodeJwt(token) as unknown as LaunchTokenPayload;
+        if (!roomId) roomId = String(claims.room_id ?? '');
       } catch {
         // opaque token — ignore
       }
@@ -169,6 +195,24 @@ export class CherryMiniApp {
       id: roomId,
       title: '',
       memberCount: 0,
+    };
+
+    this._blink = {
+      messageId: ctxMessageId || String(claims.message_id ?? ''),
+      roomId,
+      viewerWallet,
+      sender: claims.sender ? String(claims.sender) : null,
+      miniAppId: claims.mini_app_id ? String(claims.mini_app_id) : null,
+      appId: claims.app_id ? String(claims.app_id) : null,
+      route: ctxRoute || String(claims.route ?? '/'),
+      params: ctxParams,
+      height: ctxHeight,
+      interactive: claims.interactive !== false,
+      source: claims.source ? String(claims.source) : null,
+      blinkParamsVersion: ctxParamsVersion,
+      issuedAt: typeof claims.iat === 'number' ? claims.iat : null,
+      expiresAt: typeof claims.exp === 'number' ? claims.exp : null,
+      jti: claims.jti ? String(claims.jti) : null,
     };
 
     // Subscribe to host events (blink:update, suspended, etc.).
@@ -341,6 +385,7 @@ export class CherryMiniApp {
     this.removeHostListener = null;
     this.eventListeners.clear();
     this._isReady = false;
+    this._blink = null;
     destroySharedBridge();
   }
 

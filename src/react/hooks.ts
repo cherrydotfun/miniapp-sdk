@@ -6,6 +6,7 @@ import type {
   CherryRoom,
   CherryEnvironment,
   CherryNavigate,
+  CherryBlinkContext,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';
@@ -107,6 +108,19 @@ export function useCherryNavigate(): CherryNavigate {
   );
 
   return useMemo(() => ({ userProfile, openRoom }), [userProfile, openRoom]);
+}
+
+// ---- useCherryBlink ----
+
+/**
+ * Returns the inline blink context (messageId, sender, viewer, params, …) when
+ * the mini-app is rendered as an inline blink, or `null` otherwise. Use it to
+ * render per-message ("unique blink") state.
+ */
+export function useCherryBlink(): CherryBlinkContext | null {
+  const { app, isReady } = useCherryMiniAppContext();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => app?.blink ?? null, [app, isReady]);
 }
 
 // ---- useCherryShare ----

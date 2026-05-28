@@ -14,6 +14,7 @@ export {
   type CherryRoom,
   type CherryNavigate,
   type CherryWallet,
+  type CherryBlinkContext,
   type ShareBlinkOptions,
   type ShareBlinkResult,
 } from './types';

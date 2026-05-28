@@ -5,8 +5,10 @@ import {
   useCherryWallet,
   useCherryNavigate,
   useCherryShare,
+  useCherryBlink,
   useCherryEnvironment,
   type ShareBlinkResult,
+  type CherryBlinkContext,
 } from '@cherrydotfun/miniapp-sdk/react';
 import { createCherrySigner, type CherryTransactionSigner } from '@cherrydotfun/miniapp-sdk/kit';
 import type { Blockhash } from '@solana/kit';
@@ -31,6 +33,7 @@ export function App() {
   const { user, room, launchToken, isReady, error } = useCherryMiniApp();
   const cherryWallet = useCherryWallet();
   const navigate = useCherryNavigate();
+  const blink = useCherryBlink();
   const { isEmbedded, platform } = useCherryEnvironment();
 
   // Tab state
@@ -71,6 +74,12 @@ export function App() {
         <RawSignals />
       </div>
     );
+  }
+
+  // Rendered as an inline blink (a shared interactive message): show the
+  // unique identity + payload of THIS blink rather than the full demo.
+  if (blink) {
+    return <BlinkView blink={blink} viewerWallet={cherryWallet.publicKey} />;
   }
 
   const truncate = (s: string, len = 8) =>
@@ -199,6 +208,83 @@ export function App() {
 }
 
 // ============================================================================
+// Blink view — the "passport" of a single inline blink (shared interactive msg)
+// ============================================================================
+
+/**
+ * Rendered when the mini-app is launched as an inline blink. Displays every
+ * core parameter the blink carries — sender, recipient, message id, params,
+ * token timing — so each blink is visibly unique.
+ */
+function BlinkView({
+  blink,
+  viewerWallet,
+}: {
+  blink: CherryBlinkContext;
+  viewerWallet: string | null;
+}) {
+  const shortOrDash = (v: string | null | undefined, len = 6) => {
+    if (!v) return '—';
+    return v.length > len * 2 ? `${v.slice(0, len)}…${v.slice(-len)}` : v;
+  };
+  const fmtTs = (s: number | null) =>
+    s ? new Date(s * 1000).toLocaleString() : '—';
+
+  const sourceLabel =
+    blink.source === 'user_share' ? 'User share' : blink.source ?? 'Bot';
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.card}>
+        <div style={styles.sectionHeader}>
+          <h2 style={{ ...styles.heading, fontSize: 16, marginBottom: 4 }}>
+            Interactive Blink
+          </h2>
+          <span style={styles.badge}>{sourceLabel}</span>
+        </div>
+        <p style={styles.hint}>
+          Unique parameters of this shared message.
+        </p>
+        <Row label="Message ID" value={<Mono full={blink.messageId} />} />
+        <Row label="Sender" value={<Mono full={blink.sender} />} />
+        <Row
+          label="Recipient"
+          value={<Mono full={viewerWallet ?? blink.viewerWallet} />}
+        />
+        <Row label="Room ID" value={<Mono full={blink.roomId} />} />
+        <Row label="Mini-App ID" value={<span style={styles.value}>{blink.miniAppId ?? '—'}</span>} />
+        <Row label="App ID" value={<span style={styles.value}>{shortOrDash(blink.appId)}</span>} />
+        <Row label="Route" value={<span style={styles.value}>{blink.route}</span>} />
+        <Row label="Height" value={<span style={styles.value}>{String(blink.height)}</span>} />
+        <Row
+          label="Interactive"
+          value={<span style={styles.value}>{blink.interactive ? 'yes' : 'no (read-only)'}</span>}
+        />
+        <Row
+          label="Params version"
+          value={<span style={styles.value}>{blink.blinkParamsVersion ?? '—'}</span>}
+        />
+        <Row label="Issued" value={<span style={styles.value}>{fmtTs(blink.issuedAt)}</span>} />
+        <Row label="Expires" value={<span style={styles.value}>{fmtTs(blink.expiresAt)}</span>} />
+        <Row label="Token jti" value={<Mono full={blink.jti} />} />
+      </div>
+
+      <div style={styles.card}>
+        <h2 style={styles.heading}>Payload (params)</h2>
+        <pre style={styles.codeBlock}>
+          <code>{JSON.stringify(blink.params, null, 2)}</code>
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+/** Monospace value that shows the full string (selectable), with a fallback dash. */
+function Mono({ full }: { full: string | null | undefined }) {
+  return <span style={{ ...styles.mono, wordBreak: 'break-all' as const }}>{full || '—'}</span>;
+}
+
+// ============================================================================
 // Share section — reshare a "result" snapshot as a read-only blink
 // ============================================================================
 
@@ -212,7 +298,7 @@ export function App() {
 function ShareSection() {
   const share = useCherryShare();
   const [caption, setCaption] = useState('I scored 9000 points!');
-  const [height, setHeight] = useState<'compact' | 'medium' | 'tall'>('medium');
+  const [height, setHeight] = useState<'compact' | 'medium' | 'tall'>('tall');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ShareBlinkResult | null>(null);
   const [sent, setSent] = useState<Array<{ messageId: string; roomId: string }>>([]);
@@ -226,8 +312,10 @@ function ShareSection() {
       // The snapshot the receiver's miniapp will render read-only. The host
       // injects the miniapp identity from the current session — we only choose
       // route/params/height/caption.
+      // Make every shared blink visibly unique.
       const params = {
-        score: 9000,
+        score: Math.floor(1000 + Math.random() * 9000),
+        nonce: Math.random().toString(36).slice(2, 10),
         generatedAt: new Date().toISOString(),
         previewText: caption,
       };

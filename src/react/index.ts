@@ -8,6 +8,7 @@ export {
   useCherryWallet,
   useCherryNavigate,
   useCherryShare,
+  useCherryBlink,
   useCherryEnvironment,
   type UseCherryMiniAppResult,
   type UseCherryWalletResult,
@@ -20,6 +21,7 @@ export type {
   CherryEnvironment,
   CherryPlatform,
   LaunchTokenPayload,
+  CherryBlinkContext,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';

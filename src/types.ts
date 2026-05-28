@@ -90,10 +90,50 @@ export interface LaunchTokenPayload {
   interactive?: boolean;
   /** `'user_share'` for user-shared read-only snapshots (no bot behind it). */
   source?: string;
+  /** Wallet that sent the blink (message author — bot wallet or sharer). */
+  sender?: string;
   /** Bot-hosted blink URL (only on `type: 'url'` blinks). */
   blink_url?: string;
   /** Viewer wallet, for fullscreen `launch-as-viewer` tokens. */
   viewer_wallet?: string;
+}
+
+/**
+ * Resolved context for an inline blink — the unique identity + payload of the
+ * specific interactive message the mini-app is rendering. Available via
+ * `CherryMiniApp.blink` / `useCherryBlink()` only when launched as an inline
+ * blink (`mode=inline`); `null` otherwise.
+ */
+export interface CherryBlinkContext {
+  /** Unique id of this blink message — distinct per sent blink. */
+  messageId: string;
+  /** Room the blink lives in. */
+  roomId: string;
+  /** Wallet currently viewing the blink (the recipient). */
+  viewerWallet: string;
+  /** Wallet that sent the blink (message author), if known. */
+  sender: string | null;
+  /** Mini-app being rendered (absent on bot-hosted `url` blinks). */
+  miniAppId: string | null;
+  /** Owning embed app id, if any. */
+  appId: string | null;
+  /** Route opened within the mini-app. */
+  route: string;
+  /** Snapshot payload baked into this blink (read-only). */
+  params: Record<string, unknown>;
+  /** Inline render height bucket. */
+  height: 'compact' | 'medium' | 'tall' | string;
+  /** False for read-only shared snapshots. */
+  interactive: boolean;
+  /** `'user_share'` for user-shared snapshots, otherwise the bot source. */
+  source: string | null;
+  /** Monotonic version of `params` (bumped by `bot:blink_update`). */
+  blinkParamsVersion: number | null;
+  /** Launch-token unix timestamps. */
+  issuedAt: number | null;
+  expiresAt: number | null;
+  /** Launch-token unique id. */
+  jti: string | null;
 }
 
 export interface CherryUser {
