@@ -1,7 +1,14 @@
 import { useMemo, useCallback } from 'react';
 import { useCherryMiniAppContext } from './provider';
 import { getCherryEnvironment, type DetectPlatformOptions } from '../env';
-import type { CherryUser, CherryRoom, CherryEnvironment, CherryNavigate } from '../types';
+import type {
+  CherryUser,
+  CherryRoom,
+  CherryEnvironment,
+  CherryNavigate,
+  ShareBlinkOptions,
+  ShareBlinkResult,
+} from '../types';
 
 // ---- useCherryMiniApp ----
 
@@ -100,6 +107,26 @@ export function useCherryNavigate(): CherryNavigate {
   );
 
   return useMemo(() => ({ userProfile, openRoom }), [userProfile, openRoom]);
+}
+
+// ---- useCherryShare ----
+
+/**
+ * Returns a `share` function that hands a "result" snapshot to the Cherry host
+ * so the user can reshare it into a DM or group as a read-only blink. Resolves
+ * once the user picks a recipient (or cancels).
+ */
+export function useCherryShare(): (
+  options?: ShareBlinkOptions,
+) => Promise<ShareBlinkResult> {
+  const { app } = useCherryMiniAppContext();
+  return useCallback(
+    (options: ShareBlinkOptions = {}) => {
+      if (!app) return Promise.reject(new Error('CherryMiniApp not initialised'));
+      return app.share(options);
+    },
+    [app],
+  );
 }
 
 // ---- useCherryEnvironment ----

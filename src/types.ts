@@ -60,6 +60,40 @@ export interface LaunchTokenPayload {
   iat: number;
   exp: number;
   jti: string;
+
+  // ── Inline / blink claims ─────────────────────────────────────────────────
+  // Present on inline-blink and fullscreen launch tokens (NOT on the legacy
+  // embed `cherry:init` token, where `user`/`room`/`origin` are populated
+  // instead). A miniapp can read these from the verified token — including
+  // **server-side (SSR)**, since the token rides in the launch URL's query
+  // string (`/inline?token=...`). This lets the miniapp render the blink and
+  // bind data to `message_id` *before* the client mounts.
+
+  /** Token scope — `'inline'` (blink card) or `'fullscreen'` (runner). */
+  scope?: 'inline' | 'fullscreen' | string;
+  /** Render mode — mirrors `scope` for the host bridge. */
+  mode?: 'inline' | 'fullscreen' | string;
+  /** Mini-app this token renders (absent on bot-hosted `url` blinks). */
+  mini_app_id?: string;
+  /**
+   * Unique id of the blink message this token is bound to. Use it as the
+   * stable key to look up / bind per-message state at (or before) render.
+   */
+  message_id?: string;
+  /** Route within the miniapp the blink should open. */
+  route?: string;
+  /** Snapshot payload baked into the token at send time (tamper-proof). */
+  params?: Record<string, unknown>;
+  /** Inline render height bucket. */
+  height?: 'compact' | 'medium' | 'tall' | string;
+  /** Whether the blink is interactive (false for read-only snapshots). */
+  interactive?: boolean;
+  /** `'user_share'` for user-shared read-only snapshots (no bot behind it). */
+  source?: string;
+  /** Bot-hosted blink URL (only on `type: 'url'` blinks). */
+  blink_url?: string;
+  /** Viewer wallet, for fullscreen `launch-as-viewer` tokens. */
+  viewer_wallet?: string;
 }
 
 export interface CherryUser {
@@ -79,6 +113,38 @@ export interface CherryNavigate {
   userProfile(identifier: string): Promise<void>;
   /** Open room by roomId or @handle (e.g. "@mygroup") */
   openRoom(identifier: string): Promise<void>;
+}
+
+/**
+ * Options for `CherryMiniApp.share` — hand a "result" snapshot to the Cherry
+ * host so the user can share it into a DM or group as an interactive blink.
+ *
+ * The miniapp does NOT name itself: the host derives the miniapp identity from
+ * the current session's launch token, so a miniapp can only ever share itself.
+ * The shared blink is rendered read-only on the receiver side.
+ */
+export interface ShareBlinkOptions {
+  /** Route within this miniapp the receiver opens (defaults to "/"). */
+  route?: string;
+  /** Snapshot payload the receiver's miniapp renders (<= 4 KB JSON, depth <= 8). */
+  params?: Record<string, unknown>;
+  /** Inline render height bucket. */
+  height?: 'compact' | 'medium' | 'tall';
+  /** Optional caption shown alongside the blink card. */
+  caption?: string;
+}
+
+export interface ShareBlinkResult {
+  /** True when the user picked a recipient and the share was sent. */
+  shared: boolean;
+  /** The room the blink was shared into (present only when `shared` is true). */
+  roomId?: string;
+  /**
+   * Unique id of the created blink message (present only when `shared` is true).
+   * Record it to correlate later callbacks / `bot:blink_update` events back to
+   * what this miniapp sent.
+   */
+  messageId?: string;
 }
 
 export interface CherryWallet {

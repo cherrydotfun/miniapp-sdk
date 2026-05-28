@@ -14,6 +14,8 @@ export {
   type CherryRoom,
   type CherryNavigate,
   type CherryWallet,
+  type ShareBlinkOptions,
+  type ShareBlinkResult,
 } from './types';
 
 // Environment detection

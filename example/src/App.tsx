@@ -4,7 +4,9 @@ import {
   useCherryApp,
   useCherryWallet,
   useCherryNavigate,
+  useCherryShare,
   useCherryEnvironment,
+  type ShareBlinkResult,
 } from '@cherrydotfun/miniapp-sdk/react';
 import { createCherrySigner, type CherryTransactionSigner } from '@cherrydotfun/miniapp-sdk/kit';
 import type { Blockhash } from '@solana/kit';
@@ -163,6 +165,9 @@ export function App() {
         <KitSection publicKey={cherryWallet.publicKey} txVersion={txVersion} />
       )}
 
+      {/* Share a result snapshot (shared) */}
+      <ShareSection />
+
       {/* Multisig test (shared) */}
       <MultisigSection publicKey={cherryWallet.publicKey} wallet={cherryWallet} />
 
@@ -189,6 +194,131 @@ export function App() {
         {verifyResult && <ResultRow label="Result" value={verifyResult} />}
         {verifyError && <p style={styles.errorText}>{verifyError}</p>}
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Share section — reshare a "result" snapshot as a read-only blink
+// ============================================================================
+
+/**
+ * Demonstrates `useCherryShare()`. The miniapp hands the host a result
+ * snapshot (params + caption); the host opens a recipient picker. On success
+ * the result carries the new message's unique `messageId` — record it to know
+ * exactly what was sent and where, so later renders / updates can be
+ * correlated back to this share.
+ */
+function ShareSection() {
+  const share = useCherryShare();
+  const [caption, setCaption] = useState('I scored 9000 points!');
+  const [height, setHeight] = useState<'compact' | 'medium' | 'tall'>('medium');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ShareBlinkResult | null>(null);
+  const [sent, setSent] = useState<Array<{ messageId: string; roomId: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleShare = async () => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      // The snapshot the receiver's miniapp will render read-only. The host
+      // injects the miniapp identity from the current session — we only choose
+      // route/params/height/caption.
+      const params = {
+        score: 9000,
+        generatedAt: new Date().toISOString(),
+        previewText: caption,
+      };
+      const res = await share({ route: '/result', params, height, caption });
+      setResult(res);
+      // Record what we sent (and to where) keyed by the unique messageId.
+      if (res.shared && res.messageId && res.roomId) {
+        setSent((prev) => [
+          { messageId: res.messageId!, roomId: res.roomId! },
+          ...prev,
+        ]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const truncate = (s: string, len = 6) =>
+    s.length > len * 2 ? `${s.slice(0, len)}…${s.slice(-len)}` : s;
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.sectionHeader}>
+        <h2 style={styles.heading}>Share Result</h2>
+        <span style={styles.libBadge}>host.share</span>
+      </div>
+      <p style={styles.hint}>
+        Hands a read-only snapshot to the host so the user can share it into a
+        DM or group. The result includes a unique <code>messageId</code>.
+      </p>
+      <CodeBlock>{`import { useCherryShare } from '@cherrydotfun/miniapp-sdk/react';
+
+const share = useCherryShare();
+const res = await share({
+  route: '/result',
+  params: { score: 9000 },
+  caption: 'I scored 9000 points!',
+});
+// res: { shared, roomId?, messageId? }`}</CodeBlock>
+
+      <input
+        style={styles.input}
+        value={caption}
+        onChange={(e) => setCaption(e.target.value)}
+        placeholder="Caption"
+      />
+
+      <div style={{ ...styles.tabBar, marginTop: 8 }}>
+        {(['compact', 'medium', 'tall'] as const).map((h) => (
+          <button
+            key={h}
+            style={height === h ? styles.tabActive : styles.tab}
+            onClick={() => setHeight(h)}
+          >
+            {h}
+          </button>
+        ))}
+      </div>
+
+      <ActionButton
+        label="Share Result"
+        loadingLabel="Opening picker…"
+        loading={loading}
+        disabled={false}
+        onClick={handleShare}
+      />
+
+      {result && (
+        <ResultRow
+          label="Result"
+          value={
+            result.shared
+              ? `shared → room ${truncate(result.roomId ?? '')}\nmessageId: ${result.messageId ?? '—'}`
+              : 'cancelled'
+          }
+        />
+      )}
+      {error && <p style={styles.errorText}>{error}</p>}
+
+      {sent.length > 0 && (
+        <div style={styles.resultBox}>
+          <span style={styles.label}>Sent log</span>
+          <span style={{ ...styles.mono, whiteSpace: 'pre-line' }}>
+            {sent
+              .map((s) => `${truncate(s.messageId)} → ${truncate(s.roomId)}`)
+              .join('\n')}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1008,6 +1138,7 @@ const styles: Record<string, React.CSSProperties> = {
   resultBox: { marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', gap: 8 },
   errorText: { color: '#ef4444', fontSize: 13, marginTop: 8 },
   hint: { color: '#737373', fontSize: 13, marginTop: 0, marginBottom: 4 },
+  input: { width: '100%', boxSizing: 'border-box' as const, padding: '10px 12px', fontSize: 14, color: '#e5e5e5', background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: 8, outline: 'none' },
   tokenBox: { background: '#0a0a0a', borderRadius: 8, padding: 12, overflow: 'hidden' },
   tokenText: { fontSize: 11, color: '#737373', wordBreak: 'break-all' as const, lineHeight: 1.4 },
   spinner: { width: 32, height: 32, border: '3px solid #2a2a2a', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' },

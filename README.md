@@ -241,6 +241,51 @@ function MyComponent() {
 }
 ```
 
+## Sharing Results (Blinks)
+
+Hand a **read-only "result" snapshot** to the Cherry host so the user can share
+it into a DM or group as an interactive blink card. The host opens a recipient
+picker with a preview; on send, the result carries the new message's unique
+`messageId`.
+
+```tsx
+import { useCherryShare } from '@cherrydotfun/miniapp-sdk/react';
+
+function ShareButton() {
+  const share = useCherryShare();
+
+  const onClick = async () => {
+    const res = await share({
+      route: '/result',                  // route the receiver opens (default '/')
+      params: { score: 9000 },           // snapshot rendered read-only (≤ 4 KB JSON, depth ≤ 8)
+      height: 'medium',                  // 'compact' | 'medium' | 'tall'
+      caption: 'I scored 9000 points!',  // optional caption shown by the card
+    });
+    if (res.shared) {
+      // res.roomId   — where it was shared
+      // res.messageId — unique id of the created blink message (record it to
+      //                 correlate later callbacks / bot:blink_update events)
+    }
+  };
+
+  return <button onClick={onClick}>Share</button>;
+}
+```
+
+Vanilla JS: `await cherry.share({ params: { score: 9000 } })`.
+
+**How it works / guarantees**
+
+- **A mini-app can only share *itself*.** You never name the mini-app — the host
+  derives the identity from your current session's launch token. `route`,
+  `params`, `height` and `caption` are the only things you control.
+- **Read-only snapshot.** Shared blinks are non-interactive (no callback
+  buttons) — there is no bot behind them to answer callbacks. The `params` you
+  pass are the data the receiver's mini-app renders.
+- **Authored by the user.** The resulting message's sender is the user's wallet
+  (not a bot), with `metadata.senderType = 'user_share'`.
+- The mini-app must declare the `inline:render` permission to be shareable.
+
 ## Launch Token (Backend Verification)
 
 The SDK provides a JWT launch token signed by Cherry's server. Verify it on your backend:
@@ -253,11 +298,53 @@ const payload = await verifyLaunchToken(token, {
   // jwksUrl defaults to https://chat.cherry.fun/.well-known/jwks.json
 });
 
+// Always present:
 // payload.sub — wallet address
 // payload.room_id — room where app was opened
+
+// Embed / fullscreen handshake token also carries:
 // payload.user — { display_name, avatar_url }
 // payload.room — { title, member_count }
+
+// Inline / blink launch tokens also carry (all optional in the type):
+// payload.message_id  — unique id of the blink message this token is bound to
+// payload.mini_app_id — the mini-app being rendered
+// payload.route       — route to open
+// payload.params      — the snapshot payload (signed → tamper-proof)
+// payload.height      — 'compact' | 'medium' | 'tall'
+// payload.interactive — false for read-only shared snapshots
+// payload.source      — 'user_share' for user-shared snapshots
 ```
+
+### Server-Side Rendering (SSR)
+
+The launch token rides in the launch URL's **query string**
+(`/inline?token=...`), so it reaches your mini-app's server. That means you can
+render a blink server-side and bind per-message state **before** the client
+mounts — keyed by the token's `message_id`:
+
+```ts
+// Express-style handler for GET /inline?token=...
+import { verifyLaunchToken } from '@cherrydotfun/miniapp-sdk';
+
+app.get('/inline', async (req, res) => {
+  const payload = await verifyLaunchToken(String(req.query.token), {
+    expectedAppId: 'your-app-id',
+  });
+
+  const messageId = payload.message_id;      // stable key for this blink
+  const params = payload.params ?? {};        // signed snapshot data
+  await bindStateFor(messageId, params);      // your pre-render binding
+
+  res.send(renderBlinkHtml(params));          // SSR the card
+});
+```
+
+> Keep snapshot data **inside the signed token's `params`** — do not pass raw
+> params as separate query fields, or they become forgeable. The token keeps
+> them signed (RS256) and verified.
+
+See [`example/server.ts`](./example/server.ts) for a runnable SSR endpoint.
 
 ## Vanilla JS (No React)
 
@@ -274,6 +361,7 @@ cherry.launchToken;      // JWT for backend
 const sig = await cherry.wallet.signMessage(new TextEncoder().encode('hello'));
 const signed = await cherry.wallet.signAllTransactions([tx1, tx2, tx3]); // batch sign
 await cherry.navigate.userProfile('alice.sol');
+const res = await cherry.share({ params: { score: 9000 } }); // share a result snapshot
 
 cherry.on('suspended', () => console.log('App suspended'));
 cherry.on('resumed', () => console.log('App resumed'));
@@ -289,6 +377,7 @@ cherry.on('resumed', () => console.log('App resumed'));
 | `useCherryApp()` | `CherryMiniApp` instance (for kit signer etc.) |
 | `useCherryWallet()` | `{ publicKey, connected, signTransaction, signAllTransactions, signMessage, signAndSendTransaction }` |
 | `useCherryNavigate()` | `{ userProfile(id), openRoom(id) }` |
+| `useCherryShare()` | `(opts?) => Promise<{ shared, roomId?, messageId? }>` — share a read-only result snapshot |
 | `useCherryEnvironment(opts?)` | `{ isEmbedded, platform }` — no provider needed; pass `{ strict: true }` to disable fallbacks |
 
 ### CherryMiniApp (Core)
@@ -306,6 +395,7 @@ cherry.on('resumed', () => console.log('App resumed'));
 | `wallet.signAndSendTransaction(tx)` | Sign and submit transaction |
 | `navigate.userProfile(id)` | Open user profile (wallet/domain/@handle) |
 | `navigate.openRoom(id)` | Open room (roomId/@handle) |
+| `share(opts?)` | Share a read-only result snapshot → `{ shared, roomId?, messageId? }` |
 | `on(event, handler)` | Listen to `suspended`, `resumed`, `walletDisconnected` |
 | `destroy()` | Cleanup listeners |
 
@@ -333,9 +423,11 @@ The SDK communicates with Cherry via `postMessage`. The protocol is versioned (`
 |---------|-----------|-------------|
 | `cherry:init` | Host → App | Handshake with JWT token |
 | `cherry:ready` | App → Host | App acknowledges init |
-| `cherry:request` | App → Host | Wallet/navigate operations |
+| `cherry:request` | App → Host | Wallet/navigate/share operations (e.g. `host.share`, `wallet.signTransaction`) |
 | `cherry:response` | Host → App | Operation result |
 | `cherry:event` | Host → App | Lifecycle events |
+
+App→Host request methods include `wallet.signMessage`, `wallet.signTransaction`, `wallet.signAndSendTransaction`, `navigate.userProfile`, `navigate.openRoom`, and `host.share`. Prefer the typed hooks/methods above over calling the bridge directly.
 
 ## Privy Integration
 

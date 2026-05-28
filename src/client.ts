@@ -10,6 +10,8 @@ import {
   type CherryRoom,
   type CherryNavigate,
   type LaunchTokenPayload,
+  type ShareBlinkOptions,
+  type ShareBlinkResult,
 } from './types';
 
 export type CherryMiniAppEvent = 'suspended' | 'resumed' | 'walletDisconnected';
@@ -214,6 +216,25 @@ export class CherryMiniApp {
       return this.bridge.request('navigate.openRoom', { identifier }) as Promise<void>;
     },
   };
+
+  // ---- share ----
+
+  /**
+   * Hand a "result" snapshot to the Cherry host so the user can share it into
+   * a DM or group as an interactive blink. The host opens a recipient picker
+   * with a preview; the returned promise resolves once the user picks a
+   * recipient (or cancels). The miniapp identity is taken from the current
+   * session — a miniapp can only share itself, read-only.
+   */
+  share(options: ShareBlinkOptions = {}): Promise<ShareBlinkResult> {
+    this.assertReady();
+    return this.bridge.request('host.share', {
+      ...(options.route !== undefined ? { route: options.route } : {}),
+      ...(options.params !== undefined ? { params: options.params } : {}),
+      ...(options.height !== undefined ? { height: options.height } : {}),
+      ...(options.caption !== undefined ? { caption: options.caption } : {}),
+    }) as Promise<ShareBlinkResult>;
+  }
 
   // ---- event emitter ----
 

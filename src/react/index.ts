@@ -7,6 +7,7 @@ export {
   useCherryApp,
   useCherryWallet,
   useCherryNavigate,
+  useCherryShare,
   useCherryEnvironment,
   type UseCherryMiniAppResult,
   type UseCherryWalletResult,
@@ -19,6 +20,8 @@ export type {
   CherryEnvironment,
   CherryPlatform,
   LaunchTokenPayload,
+  ShareBlinkOptions,
+  ShareBlinkResult,
 } from '../types';
 
 // Re-export environment helpers (useful in non-hook contexts inside React apps)

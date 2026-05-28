@@ -17,6 +17,7 @@ The SDK supports two Solana integration paths:
 
 - Adding Cherry embed support to an existing Solana dApp
 - Making a game or utility embeddable inside Cherry chat rooms
+- Letting users share results from the app into chats as inline blink cards (Step 7b)
 - Migrating from the legacy `cherry-wallet-bridge` protocol to SDK v2
 - Setting up conditional UI (hide/show elements) based on embed context
 
@@ -302,6 +303,42 @@ function UserList() {
 }
 ```
 
+### Step 7b: Sharing Results (Optional)
+
+Let the user share a read-only "result" snapshot from your app into a DM or
+group as an inline blink card. Only available inside Cherry.
+
+```tsx
+import { useCherryShare, useCherryEnvironment } from '@cherrydotfun/miniapp-sdk/react';
+
+function ShareResult({ score }: { score: number }) {
+  const share = useCherryShare();
+  const { isEmbedded } = useCherryEnvironment();
+  if (!isEmbedded) return null; // host-only feature
+
+  const onShare = async () => {
+    const res = await share({
+      route: '/result',
+      params: { score },              // ≤ 4 KB JSON, depth ≤ 8; rendered read-only
+      caption: `I scored ${score}!`,
+    });
+    if (res.shared) {
+      // res.messageId — unique id of the created blink message; record it to
+      // correlate later (e.g. bind backend state to this blink).
+    }
+  };
+
+  return <button onClick={onShare}>Share result</button>;
+}
+```
+
+Notes:
+- The app can only share **itself** — the host derives the mini-app identity
+  from the session token; you only control `route`/`params`/`height`/`caption`.
+- Shared blinks are **read-only** (no callback buttons). Put the data to render
+  in `params`.
+- Requires the `inline:render` permission on the mini-app.
+
 ### Step 8: Backend Token Verification (Optional)
 
 ```ts
@@ -312,6 +349,15 @@ const payload = await verifyLaunchToken(token, {
   // jwksUrl defaults to https://chat.cherry.fun/.well-known/jwks.json
 });
 // payload.sub — verified wallet address
+
+// For inline / blink launch tokens, the payload also carries (all optional):
+//   payload.message_id  — unique id of the blink message (stable per-message key)
+//   payload.params      — signed snapshot data
+//   payload.route, payload.mini_app_id, payload.interactive, payload.source
+// The token is in the launch URL query (`/inline?token=...`), so you can verify
+// it and render the blink server-side (SSR) — binding state by `message_id`
+// before the client mounts. Keep snapshot data inside the signed token's
+// `params`; never trust unsigned query fields.
 ```
 
 ### Step 9: Verify Integration
