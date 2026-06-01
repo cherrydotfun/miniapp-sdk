@@ -109,7 +109,11 @@ export interface CherryBlinkContext {
   messageId: string;
   /** Room the blink lives in. */
   roomId: string;
-  /** Wallet currently viewing the blink (the recipient). */
+  /**
+   * Wallet currently viewing the blink. Note this is whoever has the chat open
+   * — it equals `sender` when the author views their own shared message, and
+   * the other participant when they view it.
+   */
   viewerWallet: string;
   /** Wallet that sent the blink (message author), if known. */
   sender: string | null;

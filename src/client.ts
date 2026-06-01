@@ -15,7 +15,12 @@ import {
   type ShareBlinkResult,
 } from './types';
 
-export type CherryMiniAppEvent = 'suspended' | 'resumed' | 'walletDisconnected';
+export type CherryMiniAppEvent =
+  | 'suspended'
+  | 'resumed'
+  | 'walletDisconnected'
+  /** Inline blink params were updated by the bot (`answerCallback.updateBlink`). */
+  | 'blink:update';
 
 type EventListener<T = unknown> = (data: T) => void;
 
@@ -126,7 +131,12 @@ export class CherryMiniApp {
     this.removeHostListener = this.bridge.startListening((message: BridgeMessage) => {
       if (message['type'] === 'cherry:event') {
         const evt = message as unknown as BridgeEvent;
-        this.emit(evt.event as CherryMiniAppEvent, evt.data);
+        // Host events carry their payload under `payload` (e.g. blink:update);
+        // fall back to `data` for older/host-agnostic shapes.
+        this.emit(
+          evt.event as CherryMiniAppEvent,
+          (evt as { payload?: unknown }).payload ?? evt.data,
+        );
       }
     });
 
@@ -220,7 +230,10 @@ export class CherryMiniApp {
       (message: BridgeMessage) => {
         if (message['type'] === 'cherry:event') {
           const evt = message as unknown as BridgeEvent;
-          this.emit(evt.event as CherryMiniAppEvent, evt.data);
+          this.emit(
+            evt.event as CherryMiniAppEvent,
+            (evt as { payload?: unknown }).payload ?? evt.data,
+          );
         }
       },
     );

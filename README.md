@@ -241,7 +241,16 @@ function MyComponent() {
 }
 ```
 
-## Sharing Results (Blinks)
+## Blinks (interactive in-chat cards)
+
+A **blink** is a mini-app rendered inline as a card inside a chat message. The
+same mini-app you build can run both fullscreen and as a blink — the SDK adapts.
+
+> 📘 **Full guide:** [BLINKS.md](./BLINKS.md) — how blinks work end-to-end,
+> params, height/resize, callbacks & live updates, wallet signing gotchas,
+> sharing, SSR, limits, and troubleshooting.
+
+### Sharing Results
 
 Hand a **read-only "result" snapshot** to the Cherry host so the user can share
 it into a DM or group as an interactive blink card. The host opens a recipient

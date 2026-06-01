@@ -248,7 +248,7 @@ function BlinkView({
         <Row label="Message ID" value={<Mono full={blink.messageId} />} />
         <Row label="Sender" value={<Mono full={blink.sender} />} />
         <Row
-          label="Recipient"
+          label="Viewer (you)"
           value={<Mono full={viewerWallet ?? blink.viewerWallet} />}
         />
         <Row label="Room ID" value={<Mono full={blink.roomId} />} />
@@ -415,11 +415,54 @@ const res = await share({
 // Transaction builders (shared between web3.js and kit sections)
 // ============================================================================
 
+// Fallback only — used if the RPC blockhash fetch fails (offline). Modern
+// wallets (Solflare, Backpack) SIMULATE before signing and will reject a tx
+// with a stale/dummy blockhash ("Simulation failed"). For the demo to actually
+// sign, we fetch a real recent blockhash below.
 const DUMMY_BLOCKHASH = 'GfVcyD4kkTNSKKyLBbhPgqNBJTiJKBRCRVjzCUjrjXvP';
+
+/** Public RPC used to fetch a live blockhash so wallets can simulate the demo
+ *  tx. Defaults to mainnet-beta (most wallets default to mainnet); override via
+ *  `VITE_RPC_URL`. */
+const RPC_URL =
+  (import.meta as { env?: Record<string, string | undefined> }).env
+    ?.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com';
+
+let cachedBlockhash: {
+  blockhash: string;
+  lastValidBlockHeight: number;
+  at: number;
+} | null = null;
+
+/** Fetch a real recent blockhash (cached 30s). Falls back to the dummy when
+ *  offline so the demo still builds a tx (it just won't simulate). */
+async function getRecentBlockhash(): Promise<{
+  blockhash: string;
+  lastValidBlockHeight: number;
+}> {
+  if (cachedBlockhash && Date.now() - cachedBlockhash.at < 30_000) {
+    return cachedBlockhash;
+  }
+  try {
+    const { Connection } = await import('@solana/web3.js');
+    const conn = new Connection(RPC_URL, 'confirmed');
+    const res = await conn.getLatestBlockhash('confirmed');
+    cachedBlockhash = {
+      blockhash: res.blockhash,
+      lastValidBlockHeight: res.lastValidBlockHeight,
+      at: Date.now(),
+    };
+    return cachedBlockhash;
+  } catch (e) {
+    console.warn('[demo] getLatestBlockhash failed, using dummy:', e);
+    return { blockhash: DUMMY_BLOCKHASH, lastValidBlockHeight: 0 };
+  }
+}
 
 /**
  * Build a transaction (legacy `Transaction` or `VersionedTransaction` with
- * MessageV0) containing a single self-transfer of `lamports`.
+ * MessageV0) containing a single self-transfer of `lamports`. Uses a real
+ * recent blockhash so the wallet can simulate + sign it.
  */
 async function buildWeb3Tx(
   publicKey: string,
@@ -435,18 +478,19 @@ async function buildWeb3Tx(
   } = await import('@solana/web3.js');
   const pk = new PublicKey(publicKey);
   const ix = SystemProgram.transfer({ fromPubkey: pk, toPubkey: pk, lamports });
+  const { blockhash } = await getRecentBlockhash();
 
   if (version === 'v0') {
     const message = new TransactionMessage({
       payerKey: pk,
-      recentBlockhash: DUMMY_BLOCKHASH,
+      recentBlockhash: blockhash,
       instructions: [ix],
     }).compileToV0Message();
     return new VersionedTransaction(message);
   }
 
   const tx = new Transaction().add(ix);
-  tx.recentBlockhash = DUMMY_BLOCKHASH;
+  tx.recentBlockhash = blockhash;
   tx.feePayer = pk;
   return tx;
 }
@@ -477,9 +521,10 @@ async function buildKitMessageBytes(
   const { getTransferSolInstruction } = await import('@solana-program/system');
 
   const signer = createNoopSigner(address(publicKeyStr));
+  const recent = await getRecentBlockhash();
   const lifetime = {
-    blockhash: DUMMY_BLOCKHASH as unknown as Blockhash,
-    lastValidBlockHeight: 0n,
+    blockhash: recent.blockhash as unknown as Blockhash,
+    lastValidBlockHeight: BigInt(recent.lastValidBlockHeight),
   };
 
   const message = pipe(
