@@ -304,13 +304,15 @@ function ShareSection() {
   const share = useCherryShare();
   const [caption, setCaption] = useState('I scored 9000 points!');
   const [height, setHeight] = useState<'compact' | 'medium' | 'tall'>('tall');
-  const [loading, setLoading] = useState(false);
+  // Which button is in-flight: `true` = with-preview, `false` = without, `null` = idle.
+  const [loadingKind, setLoadingKind] = useState<boolean | null>(null);
   const [result, setResult] = useState<ShareBlinkResult | null>(null);
   const [sent, setSent] = useState<Array<{ messageId: string; roomId: string }>>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const handleShare = async () => {
-    setLoading(true);
+  const handleShare = async (previewable: boolean) => {
+    if (loadingKind !== null) return;
+    setLoadingKind(previewable);
     setError(null);
     setResult(null);
     try {
@@ -325,15 +327,15 @@ function ShareSection() {
         previewText: caption,
       };
       // `previewable: true` → the host renders a live read-only preview of
-      // `/result` (from `params`) in the share picker. Our `/result` view
-      // renders purely from blink params, so the preview matches the final
-      // shared blink.
+      // `/result` (from `params`) in the share picker; `false` → the host shows
+      // a generic skeleton instead. Our `/result` view renders purely from
+      // blink params, so the live preview matches the final shared blink.
       const res = await share({
         route: '/result',
         params,
         height,
         caption,
-        previewable: true,
+        previewable,
       });
       setResult(res);
       // Record what we sent (and to where) keyed by the unique messageId.
@@ -346,7 +348,7 @@ function ShareSection() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      setLoadingKind(null);
     }
   };
 
@@ -361,7 +363,10 @@ function ShareSection() {
       </div>
       <p style={styles.hint}>
         Hands a read-only snapshot to the host so the user can share it into a
-        DM or group. The result includes a unique <code>messageId</code>.
+        DM or group. The result includes a unique <code>messageId</code>.{' '}
+        <strong>With preview</strong> (<code>previewable: true</code>) the host
+        renders a live read-only <code>/result</code> in the picker;{' '}
+        <strong>without</strong> it shows a generic skeleton.
       </p>
       <CodeBlock>{`import { useCherryShare } from '@cherrydotfun/miniapp-sdk/react';
 
@@ -392,13 +397,22 @@ const res = await share({
         ))}
       </div>
 
-      <ActionButton
-        label="Share Result"
-        loadingLabel="Opening picker…"
-        loading={loading}
-        disabled={false}
-        onClick={handleShare}
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ActionButton
+          label="Share with preview"
+          loadingLabel="Opening picker…"
+          loading={loadingKind === true}
+          disabled={loadingKind !== null}
+          onClick={() => handleShare(true)}
+        />
+        <ActionButton
+          label="Share without preview"
+          loadingLabel="Opening picker…"
+          loading={loadingKind === false}
+          disabled={loadingKind !== null}
+          onClick={() => handleShare(false)}
+        />
+      </div>
 
       {result && (
         <ResultRow
