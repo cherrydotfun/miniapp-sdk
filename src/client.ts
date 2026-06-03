@@ -95,8 +95,12 @@ export class CherryMiniApp {
     // viewer wallet + room/message context. Detected via `mode=inline` in the
     // launch URL (query or fragment). Fullscreen / embed keep the cherry:init
     // handshake below.
-    if (readLaunchParam('mode') === 'inline') {
-      await this.initInline();
+    const mode = readLaunchParam('mode');
+    if (mode === 'inline' || mode === 'preview') {
+      // `preview` is a non-interactive render shown in the share picker before
+      // the message exists — same bootstrap as inline, but read-only and
+      // without a real messageId/room.
+      await this.initInline(mode === 'preview');
       return;
     }
 
@@ -150,7 +154,7 @@ export class CherryMiniApp {
    * host, not the token). The blink's `params`/`messageId`/`route` are also
    * available on the host.init response and via the launch token claims.
    */
-  private async initInline(): Promise<void> {
+  private async initInline(isPreview = false): Promise<void> {
     const token = readLaunchParam('token');
 
     let ctx: Record<string, unknown> = {};
@@ -211,14 +215,21 @@ export class CherryMiniApp {
       messageId: ctxMessageId || String(claims.message_id ?? ''),
       roomId,
       viewerWallet,
-      sender: claims.sender ? String(claims.sender) : null,
+      sender: isPreview
+        ? viewerWallet || null
+        : claims.sender
+          ? String(claims.sender)
+          : null,
       miniAppId: claims.mini_app_id ? String(claims.mini_app_id) : null,
       appId: claims.app_id ? String(claims.app_id) : null,
       route: ctxRoute || String(claims.route ?? '/'),
       params: ctxParams,
       height: ctxHeight,
-      interactive: claims.interactive !== false,
-      source: claims.source ? String(claims.source) : null,
+      // Preview is always read-only; the eventual shared blink's author is the
+      // viewer doing the sharing, so report them as `sender` in preview.
+      interactive: isPreview ? false : claims.interactive !== false,
+      source: isPreview ? 'preview' : claims.source ? String(claims.source) : null,
+      isPreview,
       blinkParamsVersion: ctxParamsVersion,
       issuedAt: typeof claims.iat === 'number' ? claims.iat : null,
       expiresAt: typeof claims.exp === 'number' ? claims.exp : null,
@@ -361,6 +372,9 @@ export class CherryMiniApp {
       ...(options.params !== undefined ? { params: options.params } : {}),
       ...(options.height !== undefined ? { height: options.height } : {}),
       ...(options.caption !== undefined ? { caption: options.caption } : {}),
+      ...(options.previewable !== undefined
+        ? { previewable: options.previewable }
+        : {}),
     }) as Promise<ShareBlinkResult>;
   }
 

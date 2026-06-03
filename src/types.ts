@@ -131,6 +131,13 @@ export interface CherryBlinkContext {
   interactive: boolean;
   /** `'user_share'` for user-shared snapshots, otherwise the bot source. */
   source: string | null;
+  /**
+   * True when this is a non-interactive PREVIEW render shown in the share
+   * picker, before the message exists. In preview mode `messageId`/`roomId`
+   * are empty — render purely from `params` (don't rely on per-message state);
+   * that's what keeps the preview consistent with the eventual shared blink.
+   */
+  isPreview: boolean;
   /** Monotonic version of `params` (bumped by `bot:blink_update`). */
   blinkParamsVersion: number | null;
   /** Launch-token unix timestamps. */
@@ -176,6 +183,15 @@ export interface ShareBlinkOptions {
   height?: 'compact' | 'medium' | 'tall';
   /** Optional caption shown alongside the blink card. */
   caption?: string;
+  /**
+   * Declare that this miniapp can render a live, read-only PREVIEW of the
+   * shared result from `route` + `params` alone. When true, the Cherry host
+   * shows a real preview in the share picker (launched with `mode=preview`,
+   * `cherry.blink.isPreview === true`); when false/omitted it shows a generic
+   * skeleton. Only set this if your `route` renders correctly from `params`
+   * without a real `messageId`/room.
+   */
+  previewable?: boolean;
 }
 
 export interface ShareBlinkResult {

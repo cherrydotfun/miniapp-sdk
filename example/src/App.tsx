@@ -230,20 +230,25 @@ function BlinkView({
   const fmtTs = (s: number | null) =>
     s ? new Date(s * 1000).toLocaleString() : '—';
 
-  const sourceLabel =
-    blink.source === 'user_share' ? 'User share' : blink.source ?? 'Bot';
+  const sourceLabel = blink.isPreview
+    ? 'Preview'
+    : blink.source === 'user_share'
+      ? 'User share'
+      : blink.source ?? 'Bot';
 
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         <div style={styles.sectionHeader}>
           <h2 style={{ ...styles.heading, fontSize: 16, marginBottom: 4 }}>
-            Interactive Blink
+            {blink.isPreview ? 'Blink Preview' : 'Interactive Blink'}
           </h2>
           <span style={styles.badge}>{sourceLabel}</span>
         </div>
         <p style={styles.hint}>
-          Unique parameters of this shared message.
+          {blink.isPreview
+            ? 'Read-only preview rendered from params (no message exists yet).'
+            : 'Unique parameters of this shared message.'}
         </p>
         <Row label="Message ID" value={<Mono full={blink.messageId} />} />
         <Row label="Sender" value={<Mono full={blink.sender} />} />
@@ -319,7 +324,17 @@ function ShareSection() {
         generatedAt: new Date().toISOString(),
         previewText: caption,
       };
-      const res = await share({ route: '/result', params, height, caption });
+      // `previewable: true` → the host renders a live read-only preview of
+      // `/result` (from `params`) in the share picker. Our `/result` view
+      // renders purely from blink params, so the preview matches the final
+      // shared blink.
+      const res = await share({
+        route: '/result',
+        params,
+        height,
+        caption,
+        previewable: true,
+      });
       setResult(res);
       // Record what we sent (and to where) keyed by the unique messageId.
       if (res.shared && res.messageId && res.roomId) {
