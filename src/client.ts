@@ -180,6 +180,10 @@ export class CherryMiniApp {
         : {};
     const ctxHeight =
       typeof ctx['height'] === 'string' ? (ctx['height'] as string) : 'medium';
+    const ctxInitialHeight =
+      typeof ctx['initialHeight'] === 'number'
+        ? (ctx['initialHeight'] as number)
+        : null;
     const ctxParamsVersion =
       typeof ctx['blink_params_version'] === 'number'
         ? (ctx['blink_params_version'] as number)
@@ -225,6 +229,13 @@ export class CherryMiniApp {
       route: ctxRoute || String(claims.route ?? '/'),
       params: ctxParams,
       height: ctxHeight,
+      // Host.init carries the resolved initial height; fall back to the token
+      // claim (`initial_height`) for SSR / before the bridge answers.
+      initialHeight:
+        ctxInitialHeight ??
+        (typeof claims.initial_height === 'number'
+          ? claims.initial_height
+          : null),
       // Preview is always read-only; the eventual shared blink's author is the
       // viewer doing the sharing, so report them as `sender` in preview.
       interactive: isPreview ? false : claims.interactive !== false,
@@ -371,6 +382,9 @@ export class CherryMiniApp {
       ...(options.route !== undefined ? { route: options.route } : {}),
       ...(options.params !== undefined ? { params: options.params } : {}),
       ...(options.height !== undefined ? { height: options.height } : {}),
+      ...(options.initialHeight !== undefined
+        ? { initialHeight: options.initialHeight }
+        : {}),
       ...(options.caption !== undefined ? { caption: options.caption } : {}),
       ...(options.previewable !== undefined
         ? { previewable: options.previewable }

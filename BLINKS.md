@@ -205,7 +205,8 @@ It's `null` for fullscreen/standalone, populated for inline blinks:
 | `appId` | `string \| null` | Owning bot/embed-app id, if any. |
 | `route` | `string` | Route within your mini-app the blink opens. |
 | `params` | `Record<string, unknown>` | The snapshot payload (see §6). |
-| `height` | `'compact' \| 'medium' \| 'tall'` | The render-height bucket. |
+| `height` | `'compact' \| 'medium' \| 'tall'` | The render-height bucket (see §7). |
+| `initialHeight` | `number \| null` | Exact px the card **opens at** (no-jump), or `null` when the sender didn't pin one. Render your first paint at this height to avoid a layout jump (see §7). |
 | `interactive` | `boolean` | `false` for read-only shared snapshots. |
 | `source` | `string \| null` | `'user_share'` for user-shared snapshots; otherwise the bot source. |
 | `blinkParamsVersion` | `number \| null` | Monotonic version of `params`, bumped on live updates. |
@@ -264,6 +265,25 @@ await getSharedBridge().request('host.resize', { height: 180 });
 > There's no dedicated typed helper for `host.resize` yet — use the bridge
 > directly (imported from `@cherrydotfun/miniapp-sdk`). Most blinks just pick the
 > right bucket at send time and don't resize.
+
+### Initial height (no-jump)
+
+The bucket is the render **ceiling**; by default a card opens at the full bucket
+height and snaps to its real size on your first `host.resize`. To avoid that
+jump, the sender can pin an exact **`initialHeight`** (CSS px, ≤ the bucket max)
+— bots via `blink.initialHeight`, sharers via `share({ initialHeight })`. The
+host opens the card at that height immediately, and the SDK exposes it as
+`cherry.blink.initialHeight` (also the `initialHeight` field on the `host.init`
+response, and the `initial_height` token claim for SSR). Render your first paint
+at this height so the card never jumps:
+
+```ts
+// size your first paint to match the host card, then refine via host.resize
+const h = cherry.blink?.initialHeight ?? undefined; // px, or undefined → use the bucket
+```
+
+`initialHeight` only controls the first frame — you can still call `host.resize`
+afterwards for content-driven changes.
 
 Pick the **smallest bucket that fits** — blinks share limited chat real estate.
 
@@ -402,6 +422,7 @@ const res = await share({
   params: { score: 9000 },           // the snapshot the recipient renders
   caption: 'I scored 9000!',
   height: 'medium',
+  initialHeight: 180,                // optional: exact px the card opens at (≤ bucket max)
 });
 // res = { shared, roomId?, messageId? }
 ```
@@ -432,6 +453,7 @@ Authorization: cha_<appId>_<secret>
     "route": "/quiz",
     "params": { "question": "…", "options": ["A","B","C"] },
     "height": "tall",
+    "initialHeight": 360,
     "interactive": true
   }
 }
@@ -475,7 +497,8 @@ app.get('/inline', async (req, res) => {
 ```
 
 `payload` (inline tokens) carries `message_id`, `mini_app_id`, `route`,
-`params`, `height`, `interactive`, `source`, plus `sub` (viewer) and `room_id`.
+`params`, `height`, `initial_height` (px the card opens at, if pinned),
+`interactive`, `source`, plus `sub` (viewer) and `room_id`.
 **Keep snapshot data inside the signed token's `params`** — never trust unsigned
 query fields. See [`example/server.ts`](./example/server.ts) for a runnable
 endpoint.
@@ -522,6 +545,7 @@ Enforced server-side when a blink is sent/shared (`BlinkValidationService`):
 | `route` | must start with `/`, only `[a-zA-Z0-9_\-/.]`, ≤ 257 chars, no `..`, no protocol | `BLINK_ROUTE_INVALID` |
 | `params` | object, JSON ≤ **4096 bytes**, depth ≤ **8** | `BLINK_PARAMS_TOO_LARGE` / `BLINK_PARAMS_DEPTH` |
 | `height` | one of `compact` \| `medium` \| `tall` | `BLINK_HEIGHT_INVALID` |
+| `initialHeight` | positive integer, ≤ the `height` bucket max (`compact` 96 / `medium` 220 / `tall` 420) | `BLINK_INITIAL_HEIGHT_INVALID` |
 | mini-app | must declare `inline:render` | `MINIAPP_INLINE_NOT_ALLOWED` |
 | `interactive: false` | mini-app must declare `inline:eager` | `BLINK_EAGER_NOT_ALLOWED` |
 | URL blink | origin must be in app `blinkOrigins`, https (http only for localhost in dev) | `BLINK_URL_NOT_ALLOWED` / `BLINK_URL_INVALID` |
@@ -551,7 +575,8 @@ Enforced server-side when a blink is sent/shared (`BlinkValidationService`):
       (fullscreen/standalone).
 - [ ] UI renders from `cherry.blink.params` (+ `messageId`), not local state.
 - [ ] `params` ≤ 4 KB, depth ≤ 8, no secrets.
-- [ ] Right `height` bucket; optional `host.resize` to fit content.
+- [ ] Right `height` bucket; size first paint to `cherry.blink.initialHeight`
+      (when set) to avoid a jump; optional `host.resize` to fit content.
 - [ ] Interactive? Wire `host.callback` and subscribe to `blink:update`.
       Read-only? Don't.
 - [ ] Wallet: never `wallet.connect`; use `cherry.wallet.publicKey`; transactions

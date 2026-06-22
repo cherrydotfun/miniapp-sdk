@@ -268,6 +268,7 @@ function ShareButton() {
       route: '/result',                  // route the receiver opens (default '/')
       params: { score: 9000 },           // snapshot rendered read-only (≤ 4 KB JSON, depth ≤ 8)
       height: 'medium',                  // 'compact' | 'medium' | 'tall'
+      initialHeight: 180,                // optional: exact px the card opens at (≤ bucket max)
       caption: 'I scored 9000 points!',  // optional caption shown by the card
     });
     if (res.shared) {
@@ -287,7 +288,7 @@ Vanilla JS: `await cherry.share({ params: { score: 9000 } })`.
 
 - **A mini-app can only share *itself*.** You never name the mini-app — the host
   derives the identity from your current session's launch token. `route`,
-  `params`, `height` and `caption` are the only things you control.
+  `params`, `height`, `initialHeight` and `caption` are the only things you control.
 - **Read-only snapshot.** Shared blinks are non-interactive (no callback
   buttons) — there is no bot behind them to answer callbacks. The `params` you
   pass are the data the receiver's mini-app renders.
@@ -321,6 +322,7 @@ const payload = await verifyLaunchToken(token, {
 // payload.route       — route to open
 // payload.params      — the snapshot payload (signed → tamper-proof)
 // payload.height      — 'compact' | 'medium' | 'tall'
+// payload.initial_height — px the card opens at (no-jump), if the sender pinned one
 // payload.interactive — false for read-only shared snapshots
 // payload.source      — 'user_share' for user-shared snapshots
 ```

@@ -86,6 +86,12 @@ export interface LaunchTokenPayload {
   params?: Record<string, unknown>;
   /** Inline render height bucket. */
   height?: 'compact' | 'medium' | 'tall' | string;
+  /**
+   * Explicit initial render height (CSS px) the host opens the card at, so it
+   * doesn't jump before the first `host.resize`. Bounded by the `height`
+   * bucket. Read it to render the blink at exactly the declared height.
+   */
+  initial_height?: number;
   /** Whether the blink is interactive (false for read-only snapshots). */
   interactive?: boolean;
   /** `'user_share'` for user-shared read-only snapshots (no bot behind it). */
@@ -127,6 +133,12 @@ export interface CherryBlinkContext {
   params: Record<string, unknown>;
   /** Inline render height bucket. */
   height: 'compact' | 'medium' | 'tall' | string;
+  /**
+   * Explicit initial render height (CSS px) the host opens the card at, or
+   * `null` when the sender didn't pin one (the host then uses the bucket
+   * height). Render the blink at this height to avoid a layout jump.
+   */
+  initialHeight: number | null;
   /** False for read-only shared snapshots. */
   interactive: boolean;
   /** `'user_share'` for user-shared snapshots, otherwise the bot source. */
@@ -181,6 +193,12 @@ export interface ShareBlinkOptions {
   params?: Record<string, unknown>;
   /** Inline render height bucket. */
   height?: 'compact' | 'medium' | 'tall';
+  /**
+   * Explicit initial render height (CSS px) the receiver's card opens at, so it
+   * doesn't jump. Must be <= the `height` bucket max (compact 96 / medium 220 /
+   * tall 420). Omit to start at the bucket height.
+   */
+  initialHeight?: number;
   /** Optional caption shown alongside the blink card. */
   caption?: string;
   /**
