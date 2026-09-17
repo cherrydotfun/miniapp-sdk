@@ -7,6 +7,7 @@ import type {
   CherryEnvironment,
   CherryNavigate,
   CherryBlinkContext,
+  CherryWalletSwitchResult,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';
@@ -36,20 +37,32 @@ export function useCherryApp() {
 // ---- useCherryWallet ----
 
 export interface UseCherryWalletResult {
+  /**
+   * The payment wallet the host signs with — use it as fee payer. It can
+   * differ from `useCherryMiniApp().user.publicKey` (the identity) and updates
+   * on `'wallet.changed'`; rebuild prepared transactions when it changes.
+   */
   publicKey: string | null;
+  /** True when `publicKey` is the Cherry ID wallet (key custodied by Cherry). */
+  custodial: boolean;
   connected: boolean;
   signTransaction(transaction: unknown): Promise<unknown>;
   signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
   signMessage(message: Uint8Array): Promise<Uint8Array>;
   signAndSendTransaction(transaction: unknown): Promise<string>;
+  /** See `CherryMiniApp.wallet.requestSwitch()`. */
+  requestSwitch(): Promise<CherryWalletSwitchResult>;
 }
 
 export function useCherryWallet(): UseCherryWalletResult {
-  const { app, user, isReady } = useCherryMiniAppContext();
+  const { app, user, isReady, walletPublicKey, custodial, syncWallet } = useCherryMiniAppContext();
 
   return useMemo<UseCherryWalletResult>(
     () => ({
-      publicKey: user?.publicKey ?? null,
+      // Equal to `user.publicKey` unless the host set a separate payer; the
+      // fallback keeps 0.1.x output for an inline launch without a wallet.
+      publicKey: walletPublicKey ?? user?.publicKey ?? null,
+      custodial,
       connected: isReady && user !== null,
 
       signTransaction(transaction: unknown): Promise<unknown> {
@@ -79,10 +92,20 @@ export function useCherryWallet(): UseCherryWalletResult {
         }
         return app.wallet.signAndSendTransaction(transaction);
       },
+
+      requestSwitch(): Promise<CherryWalletSwitchResult> {
+        if (!app) {
+          return Promise.reject(new Error('CherryMiniApp not initialised'));
+        }
+        return app.wallet.requestSwitch().then((picked) => {
+          syncWallet();
+          return picked;
+        });
+      },
     }),
-    // Rebuild only when app / user readiness changes
+    // Rebuild only when app / user readiness / payment wallet changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [app, isReady, user?.publicKey],
+    [app, isReady, user?.publicKey, walletPublicKey, custodial],
   );
 }
 

@@ -79,7 +79,10 @@ export function App() {
   // Rendered as an inline blink (a shared interactive message): show the
   // unique identity + payload of THIS blink rather than the full demo.
   if (blink) {
-    return <BlinkView blink={blink} viewerWallet={cherryWallet.publicKey} />;
+    // The VIEWER, not the payer: a blink is shown to the person, and
+    // `cherryWallet.publicKey` is the wallet they pay WITH, which the host may
+    // have set to another wallet of the same account.
+    return <BlinkView blink={blink} viewerWallet={user?.publicKey ?? null} />;
   }
 
   const truncate = (s: string, len = 8) =>
@@ -119,7 +122,20 @@ export function App() {
       <div style={styles.card}>
         <h2 style={{ ...styles.heading, fontSize: 16, marginBottom: 4 }}>Cherry Mini-App SDK Example</h2>
         <Row label="Platform" value={<span style={styles.badge}>{platform}</span>} />
-        <Row label="Wallet" value={<span style={styles.mono}>{truncate(cherryWallet.publicKey ?? '')}</span>} />
+        {/* Two different wallets, and an app that confuses them builds a
+            transaction the host will not sign: `paying` is the payer the host
+            selected (`payment_wallet`), `viewer` is the person's session
+            wallet (`sub`), which is what identifies them to this app. */}
+        <Row label="Paying with" value={<span style={styles.mono}>{truncate(cherryWallet.publicKey ?? '')}</span>} />
+        <Row
+          label="Viewer"
+          value={
+            <span style={styles.mono}>
+              {truncate(user?.publicKey ?? '')}
+              {user?.publicKey && cherryWallet.publicKey && user.publicKey !== cherryWallet.publicKey ? ' (differs)' : ''}
+            </span>
+          }
+        />
         <Row label="User" value={user?.displayName || '—'} />
         <Row label="Room" value={`${room?.title || '—'} (${room?.memberCount ?? 0})`} />
       </div>

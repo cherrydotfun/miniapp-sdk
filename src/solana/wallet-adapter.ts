@@ -10,7 +10,7 @@ import {
   type WalletName,
 } from '@solana/wallet-adapter-base';
 import { PublicKey, Transaction, VersionedTransaction, type Connection } from '@solana/web3.js';
-import { getSharedBridge } from '../bridge';
+import { getSharedBridge, type Bridge } from '../bridge';
 import { isInsideCherry } from '../env';
 
 export const CherryWalletAdapterName = 'Cherry' as WalletName<'Cherry'>;
@@ -47,6 +47,7 @@ export class CherryWalletAdapter extends BaseWalletAdapter {
 
   private _publicKey: PublicKey | null = null;
   private _connecting = false;
+  private _removeHostListener: (() => void) | null = null;
 
   // ---- connect / disconnect ----
 
@@ -62,6 +63,7 @@ export class CherryWalletAdapter extends BaseWalletAdapter {
       const result = await bridge.request('wallet.connect');
       const { publicKey } = result as { publicKey: string };
       this._publicKey = new PublicKey(publicKey);
+      this.followWalletChanges(bridge);
       this.emit('connect', this._publicKey);
     } catch (error) {
       throw new WalletConnectionError((error as Error).message, error as Error);
@@ -72,8 +74,40 @@ export class CherryWalletAdapter extends BaseWalletAdapter {
 
   async disconnect(): Promise<void> {
     if (!this._publicKey) return;
+    this._removeHostListener?.();
+    this._removeHostListener = null;
     this._publicKey = null;
     this.emit('disconnect');
+  }
+
+  /**
+   * The host can switch the payment wallet while the app runs and announces
+   * it with a `wallet.changed` event. Re-emitting `connect` with the new key
+   * is how wallet adapters report an account switch (Phantom's
+   * `accountChanged` does the same), so `@solana/wallet-adapter-react`
+   * picks up the new `publicKey` and the app can rebuild its transactions.
+   */
+  private followWalletChanges(bridge: Bridge): void {
+    this._removeHostListener?.();
+    this._removeHostListener = bridge.startListening((message) => {
+      if (message['type'] !== 'cherry:event' || message['event'] !== 'wallet.changed') return;
+      const data = (message['payload'] ?? message['data']) as Record<string, unknown> | undefined;
+      const next = data?.['publicKey'];
+      if (typeof next !== 'string' || !this._publicKey || next === this._publicKey.toBase58()) return;
+      let publicKey: PublicKey;
+      try {
+        publicKey = new PublicKey(next);
+      } catch {
+        return; // not a valid address — keep signing with the current wallet
+      }
+      this._publicKey = publicKey;
+      try {
+        this.emit('connect', publicKey);
+      } catch {
+        // This runs inside the bridge's handler loop: a throwing consumer
+        // listener must not keep CherryMiniApp from seeing the same event.
+      }
+    });
   }
 
   // ---- sign transaction ----

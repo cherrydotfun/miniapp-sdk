@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -18,6 +19,11 @@ interface CherryMiniAppContextValue {
   room: CherryRoom | null;
   launchToken: string | null;
   error: Error | null;
+  /** Payment wallet (`app.wallet.publicKey`), kept current across 'wallet.changed'. */
+  walletPublicKey: string | null;
+  custodial: boolean;
+  /** Re-read wallet state from the app (after `wallet.requestSwitch()` resolves). */
+  syncWallet: () => void;
 }
 
 const CherryMiniAppContext = createContext<CherryMiniAppContextValue | null>(null);
@@ -39,6 +45,17 @@ export function CherryMiniAppProvider({
   const [room, setRoom] = useState<CherryRoom | null>(null);
   const [launchToken, setLaunchToken] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [walletPublicKey, setWalletPublicKey] = useState<string | null>(null);
+  const [custodial, setCustodial] = useState(false);
+
+  const syncWallet = useCallback(() => {
+    const app = appRef.current;
+    if (!app?.isReady) return;
+    setWalletPublicKey(app.wallet.publicKey);
+    setCustodial(app.wallet.custodial);
+    // 'wallet.changed' may carry a re-minted token for the new payer.
+    setLaunchToken(app.launchToken);
+  }, []);
 
   useEffect(() => {
     const opts: import('../client').CherryMiniAppOptions = {};
@@ -46,6 +63,7 @@ export function CherryMiniAppProvider({
     if (strict !== undefined) opts.strict = strict;
     const app = new CherryMiniApp(opts);
     appRef.current = app;
+    app.on('wallet.changed', syncWallet);
 
     app
       .init()
@@ -53,6 +71,8 @@ export function CherryMiniAppProvider({
         setUser(app.user);
         setRoom(app.room);
         setLaunchToken(app.launchToken);
+        setWalletPublicKey(app.wallet.publicKey);
+        setCustodial(app.wallet.custodial);
         setIsReady(true);
       })
       .catch((err: unknown) => {
@@ -74,6 +94,9 @@ export function CherryMiniAppProvider({
     room,
     launchToken,
     error,
+    walletPublicKey,
+    custodial,
+    syncWallet,
   };
 
   return (

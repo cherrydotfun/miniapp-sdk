@@ -1,5 +1,5 @@
 import { decodeJwt } from 'jose';
-import { Bridge, getSharedBridge, destroySharedBridge } from './bridge';
+import { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';
 import type { BridgeEvent } from './bridge';
 import {
   BRIDGE_VERSION,
@@ -11,6 +11,8 @@ import {
   type CherryNavigate,
   type LaunchTokenPayload,
   type CherryBlinkContext,
+  type CherryWalletChangedEvent,
+  type CherryWalletSwitchResult,
   type ShareBlinkOptions,
   type ShareBlinkResult,
 } from './types';
@@ -20,7 +22,14 @@ export type CherryMiniAppEvent =
   | 'resumed'
   | 'walletDisconnected'
   /** Inline blink params were updated by the bot (`answerCallback.updateBlink`). */
-  | 'blink:update';
+  | 'blink:update'
+  /**
+   * The person switched the wallet they pay with ({@link CherryWalletChangedEvent}).
+   * `wallet.publicKey` / `wallet.custodial` (and `launchToken`, when the host
+   * re-minted it) are already updated when listeners run. Rebuild any
+   * transaction prepared for the previous wallet.
+   */
+  | 'wallet.changed';
 
 type EventListener<T = unknown> = (data: T) => void;
 
@@ -47,7 +56,10 @@ export class CherryMiniApp {
   private _user: CherryUser | null = null;
   private _room: CherryRoom | null = null;
   private _launchToken: string | null = null;
+  /** The payment wallet — what `wallet.publicKey` reports and the host signs with. */
   private _publicKey: string | null = null;
+  private _custodial = false;
+  private _hostCapabilities: string[] = [];
   private _blink: CherryBlinkContext | null = null;
   private readonly initTimeout: number;
 
@@ -85,6 +97,16 @@ export class CherryMiniApp {
     return this._blink;
   }
 
+  /**
+   * Features the host advertised (`cherry:init` `capabilities`, or the inline
+   * `host.init` answer's `capabilities`). `[]` for hosts that predate
+   * capability negotiation and before `init()` resolves. Feature-detect
+   * rather than assuming: e.g. `'wallet-switch'` → `wallet.requestSwitch()`.
+   */
+  get hostCapabilities(): string[] {
+    return [...this._hostCapabilities];
+  }
+
   // ---- init ----
 
   async init(): Promise<void> {
@@ -110,12 +132,19 @@ export class CherryMiniApp {
     const payload = decodeJwt(initMessage.token) as unknown as LaunchTokenPayload;
 
     this._launchToken = initMessage.token;
-    this._publicKey = payload.sub;
+    // `sub` is the identity and never moves; the payer is a separate claim.
+    // Tokens without it (older hosts) keep the 0.1.x behaviour: payer = sub.
+    this._publicKey = nonEmptyString(payload.payment_wallet) ?? payload.sub;
+    this._custodial = payload.payment_wallet_kind === 'app_held';
+    this._hostCapabilities = parseCapabilities(initMessage.capabilities);
 
+    const cherryId = nonEmptyString(payload.cherry_id);
     this._user = {
       publicKey: payload.sub,
       displayName: payload.user.display_name,
       avatarUrl: payload.user.avatar_url,
+      // Omitted rather than `undefined` so the object keeps its 0.1.x shape.
+      ...(cherryId !== undefined ? { cherryId } : {}),
     };
 
     this._room = {
@@ -132,17 +161,9 @@ export class CherryMiniApp {
     this.bridge.sendToHost(readyMsg);
 
     // Subscribe to host events (suspended, resumed, walletDisconnected, etc.)
-    this.removeHostListener = this.bridge.startListening((message: BridgeMessage) => {
-      if (message['type'] === 'cherry:event') {
-        const evt = message as unknown as BridgeEvent;
-        // Host events carry their payload under `payload` (e.g. blink:update);
-        // fall back to `data` for older/host-agnostic shapes.
-        this.emit(
-          evt.event as CherryMiniAppEvent,
-          (evt as { payload?: unknown }).payload ?? evt.data,
-        );
-      }
-    });
+    this.removeHostListener = this.bridge.startListening((message) =>
+      this.handleHostMessage(message),
+    );
 
     this._isReady = true;
   }
@@ -168,8 +189,13 @@ export class CherryMiniApp {
       // whatever the token carries so the app can render in a degraded state.
     }
 
+    // `viewerWallet` is the viewer's identity; CherryID-aware hosts add the
+    // payer separately (`viewerPaymentWallet` / `viewerPaymentWalletKind`) and
+    // `viewerCherryId`. Older hosts send none of them → payer = viewerWallet.
     const viewerWallet =
       typeof ctx['viewerWallet'] === 'string' ? (ctx['viewerWallet'] as string) : '';
+    const viewerPaymentWallet = nonEmptyString(ctx['viewerPaymentWallet']);
+    const viewerCherryId = nonEmptyString(ctx['viewerCherryId']);
     let roomId = typeof ctx['roomId'] === 'string' ? (ctx['roomId'] as string) : '';
     const ctxMessageId =
       typeof ctx['messageId'] === 'string' ? (ctx['messageId'] as string) : '';
@@ -190,7 +216,9 @@ export class CherryMiniApp {
         : null;
 
     this._launchToken = token ?? null;
-    this._publicKey = viewerWallet || null;
+    this._publicKey = viewerPaymentWallet ?? (viewerWallet || null);
+    this._custodial = ctx['viewerPaymentWalletKind'] === 'app_held';
+    this._hostCapabilities = parseCapabilities(ctx['capabilities']);
 
     // Decode the launch token for claims the host.init response doesn't carry
     // (sender, miniAppId/appId, source, interactive, token timing).
@@ -204,10 +232,12 @@ export class CherryMiniApp {
       }
     }
 
+    const cherryId = viewerCherryId ?? nonEmptyString(claims.cherry_id);
     this._user = {
       publicKey: viewerWallet,
       displayName: '',
       avatarUrl: '',
+      ...(cherryId !== undefined ? { cherryId } : {}),
     };
     this._room = {
       id: roomId,
@@ -247,20 +277,37 @@ export class CherryMiniApp {
       jti: claims.jti ? String(claims.jti) : null,
     };
 
-    // Subscribe to host events (blink:update, suspended, etc.).
-    this.removeHostListener = this.bridge.startListening(
-      (message: BridgeMessage) => {
-        if (message['type'] === 'cherry:event') {
-          const evt = message as unknown as BridgeEvent;
-          this.emit(
-            evt.event as CherryMiniAppEvent,
-            (evt as { payload?: unknown }).payload ?? evt.data,
-          );
-        }
-      },
+    // Subscribe to host events (blink:update, wallet.changed, suspended, etc.).
+    this.removeHostListener = this.bridge.startListening((message) =>
+      this.handleHostMessage(message),
     );
 
     this._isReady = true;
+  }
+
+  /** Host → app events, shared by the fullscreen and inline bootstraps. */
+  private handleHostMessage(message: BridgeMessage): void {
+    if (message['type'] !== 'cherry:event') return;
+    const evt = message as unknown as BridgeEvent;
+    // Host events carry their payload under `payload` (e.g. blink:update);
+    // fall back to `data` for older/host-agnostic shapes.
+    const data = (evt as { payload?: unknown }).payload ?? evt.data;
+    if (evt.event === 'wallet.changed') {
+      this.applyWalletChanged(data);
+      return;
+    }
+    this.emit(evt.event as CherryMiniAppEvent, data);
+  }
+
+  private applyWalletChanged(data: unknown): void {
+    const change = parseWalletChange(data);
+    // A malformed payload is dropped: adopting it would point signing at a
+    // wallet nobody selected, and listeners would rebuild for nothing.
+    if (!change) return;
+    this._publicKey = change.publicKey;
+    this._custodial = change.custodial;
+    if (change.token !== undefined) this._launchToken = change.token;
+    this.emit('wallet.changed', change);
   }
 
   private waitForInit(): Promise<BridgeInitMessage> {
@@ -280,6 +327,9 @@ export class CherryMiniApp {
         if (message['type'] === 'cherry:init') {
           clearTimeout(timer);
           cleanup();
+          // The bridge also buffered this message; drop that copy so it can't
+          // be replayed to a later init().
+          this.bridge.consumeBufferedInit();
           resolve(message as unknown as BridgeInitMessage);
         }
       });
@@ -291,20 +341,34 @@ export class CherryMiniApp {
   /**
    * Returns a stable wallet facade. Methods are arrow functions bound to the
    * outer CherryMiniApp instance so `this` always resolves correctly.
-   * `publicKey` is a getter that reads the live `_publicKey` field.
+   * `publicKey` / `custodial` are getters that read the live fields.
+   *
+   * `publicKey` is the person's PAYMENT wallet — the launch token's
+   * `payment_wallet`, else `sub` — which is what the host signs with. Build
+   * transactions with it as fee payer. It can differ from `user.publicKey`
+   * (the identity) and can change while the app runs: on `'wallet.changed'`
+   * rebuild prepared transactions — the host refuses one whose fee payer is
+   * not the selected wallet, and the sign call rejects with a `BridgeError`
+   * whose `code` is `'WALLET_CHANGED'`.
    */
   get wallet(): {
     readonly publicKey: string | null;
+    /** True when `publicKey` is the Cherry ID wallet (key custodied by Cherry). */
+    readonly custodial: boolean;
     signTransaction(transaction: unknown): Promise<unknown>;
     signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
     signAndSendTransaction(transaction: unknown): Promise<string>;
     signMessage(message: Uint8Array): Promise<Uint8Array>;
+    requestSwitch(): Promise<CherryWalletSwitchResult>;
   } {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return {
       get publicKey(): string | null {
         return self._publicKey;
+      },
+      get custodial(): boolean {
+        return self._custodial;
       },
       signTransaction(transaction: unknown): Promise<Uint8Array> {
         self.assertReady();
@@ -346,9 +410,42 @@ export class CherryMiniApp {
             return base64ToUint8Array(sig as string);
           });
       },
+      /**
+       * Ask the host to let the person pick another wallet to pay with.
+       * Resolves with the wallet they picked (possibly the current one);
+       * rejects with a `BridgeError` whose `code` is `'USER_REJECTED'` when
+       * they dismiss the picker.
+       *
+       * Allowed in inline blinks as well as fullscreen. The host rate-limits
+       * it, so call it from a user gesture, never in a loop or on a timer.
+       * Feature-detect with `hostCapabilities.includes('wallet-switch')`:
+       * older hosts reject the method (`UNKNOWN_METHOD` / `METHOD_NOT_FOUND`).
+       *
+       * The host also fires `'wallet.changed'` (with a re-minted token in
+       * fullscreen) — rebuild prepared transactions there.
+       */
+      requestSwitch(): Promise<CherryWalletSwitchResult> {
+        self.assertReady();
+        return self.bridge.request('wallet.requestSwitch', {}).then((result) => {
+          const picked = parseWalletChange(result);
+          if (!picked) {
+            throw new BridgeError(
+              'Host answered wallet.requestSwitch without a publicKey',
+              'INVALID_RESPONSE',
+            );
+          }
+          // Listeners are notified by the host's 'wallet.changed' event; the
+          // state is also applied here so `wallet.publicKey` is current the
+          // moment this promise resolves, whichever of the two arrives first.
+          self._publicKey = picked.publicKey;
+          self._custodial = picked.custodial;
+          return { publicKey: picked.publicKey, custodial: picked.custodial };
+        });
+      },
     };
   }
 
+  /** Same as `wallet.publicKey`: the payment wallet. */
   getPublicKey(): string | null {
     return this._publicKey;
   }
@@ -394,17 +491,21 @@ export class CherryMiniApp {
 
   // ---- event emitter ----
 
-  on(event: CherryMiniAppEvent, listener: EventListener): void {
+  on(event: 'wallet.changed', listener: EventListener<CherryWalletChangedEvent>): void;
+  on(event: CherryMiniAppEvent, listener: EventListener): void;
+  on(event: CherryMiniAppEvent, listener: EventListener<never>): void {
     let set = this.eventListeners.get(event);
     if (!set) {
       set = new Set();
       this.eventListeners.set(event, set);
     }
-    set.add(listener);
+    set.add(listener as EventListener);
   }
 
-  off(event: CherryMiniAppEvent, listener: EventListener): void {
-    this.eventListeners.get(event)?.delete(listener);
+  off(event: 'wallet.changed', listener: EventListener<CherryWalletChangedEvent>): void;
+  off(event: CherryMiniAppEvent, listener: EventListener): void;
+  off(event: CherryMiniAppEvent, listener: EventListener<never>): void {
+    this.eventListeners.get(event)?.delete(listener as EventListener);
   }
 
   private emit(event: string, data?: unknown): void {
@@ -437,6 +538,33 @@ export class CherryMiniApp {
       throw new Error('CherryMiniApp is not ready. Call init() first.');
     }
   }
+}
+
+// ---- host payload helpers ----
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function parseCapabilities(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((c): c is string => typeof c === 'string') : [];
+}
+
+/**
+ * Validate a `wallet.changed` payload / `wallet.requestSwitch` result:
+ * `{ publicKey, custodial, token? }`. `null` when there is no usable wallet.
+ */
+function parseWalletChange(value: unknown): CherryWalletChangedEvent | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  const publicKey = nonEmptyString(v['publicKey']);
+  if (publicKey === undefined) return null;
+  const token = nonEmptyString(v['token']);
+  return {
+    publicKey,
+    custodial: v['custodial'] === true,
+    ...(token !== undefined ? { token } : {}),
+  };
 }
 
 // ---- launch URL helpers ----

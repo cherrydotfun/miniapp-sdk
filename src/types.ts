@@ -9,6 +9,11 @@ export interface BridgeInitMessage extends BridgeMessage {
   type: 'cherry:init';
   version: number;
   token: string;
+  /**
+   * Features this host supports beyond the base protocol (e.g.
+   * `'wallet-switch'`). Hosts released before capability negotiation omit it;
+   * read it through `CherryMiniApp.hostCapabilities`, which defaults to `[]`.
+   */
   capabilities: string[];
 }
 
@@ -45,7 +50,13 @@ export interface CherryEnvironment {
 }
 
 export interface LaunchTokenPayload {
+  /**
+   * The person's identity: their account's primary wallet. It does not change
+   * when they pick another wallet to pay with — see `payment_wallet`.
+   */
   sub: string;
+  /** Token issuer — `https://chat.cherry.fun` for tokens minted by Cherry. */
+  iss?: string;
   app_id: string;
   room_id: string;
   origin: string;
@@ -102,7 +113,26 @@ export interface LaunchTokenPayload {
   blink_url?: string;
   /** Viewer wallet, for fullscreen `launch-as-viewer` tokens. */
   viewer_wallet?: string;
+
+  // ── CherryID claims ───────────────────────────────────────────────────────
+  // Added by hosts that support CherryID wallets; absent on older tokens.
+
+  /** The person's Cherry ID — stable across every wallet linked to the account. */
+  cherry_id?: string;
+  /**
+   * The wallet the person chose to pay with in this app. Transactions must use
+   * it as fee payer / signer. Absent → the payer is `sub`.
+   */
+  payment_wallet?: string;
+  /**
+   * Who holds `payment_wallet`'s key: `'app_held'` — the Cherry ID wallet,
+   * custodied by Cherry; `'external'` — a wallet app the person connected.
+   */
+  payment_wallet_kind?: PaymentWalletKind;
 }
+
+/** See `LaunchTokenPayload.payment_wallet_kind`. */
+export type PaymentWalletKind = 'app_held' | 'external';
 
 /**
  * Resolved context for an inline blink — the unique identity + payload of the
@@ -160,9 +190,16 @@ export interface CherryBlinkContext {
 }
 
 export interface CherryUser {
+  /**
+   * The person's identity wallet (the launch token's `sub`). Key your user
+   * records on it. It is NOT necessarily the wallet that signs — that is
+   * `CherryMiniApp.wallet.publicKey`.
+   */
   publicKey: string;
   displayName: string;
   avatarUrl: string;
+  /** The person's Cherry ID, when the host provides one. */
+  cherryId?: string;
 }
 
 export interface CherryRoom {
@@ -225,8 +262,49 @@ export interface ShareBlinkResult {
   messageId?: string;
 }
 
+/** Payload of the `'wallet.changed'` event. */
+export interface CherryWalletChangedEvent {
+  /** The wallet that now pays and signs. */
+  publicKey: string;
+  /** True when it is the Cherry ID wallet (key custodied by Cherry). */
+  custodial: boolean;
+  /**
+   * Re-minted launch token carrying the new `payment_wallet`, when the host
+   * re-mints (fullscreen). `CherryMiniApp.launchToken` already holds it; send
+   * it to your backend if you verify the payer there.
+   */
+  token?: string;
+}
+
+/** Result of `CherryMiniApp.wallet.requestSwitch()`. */
+export interface CherryWalletSwitchResult {
+  publicKey: string;
+  custodial: boolean;
+}
+
+/**
+ * The wallet a mini-app signs with: the person's payment wallet, which may
+ * differ from their identity (`CherryUser.publicKey`) and may change while the
+ * app is open — the host lets the person switch.
+ *
+ * On `'wallet.changed'`, rebuild any transaction you have prepared: the host
+ * checks that each transaction's fee payer is the currently selected wallet
+ * and refuses a stale one with the `WALLET_CHANGED` error code.
+ */
 export interface CherryWallet {
   publicKey: string;
+  /**
+   * True when `publicKey` is the Cherry ID wallet (key custodied by Cherry),
+   * false for a wallet app the person connected. Optional here so existing
+   * implementations of this interface keep compiling; always present on
+   * `CherryMiniApp.wallet`.
+   */
+  custodial?: boolean;
+  /**
+   * Ask the host to let the person pick another wallet. Optional for the same
+   * reason as `custodial`; always present on `CherryMiniApp.wallet`.
+   */
+  requestSwitch?(): Promise<CherryWalletSwitchResult>;
   /** Signs a transaction. Accepts Transaction, VersionedTransaction, Uint8Array, or base64 string. Returns signed bytes. */
   signTransaction(transaction: unknown): Promise<Uint8Array>;
   /** Signs all transactions in a single batch request. Returns array of signed bytes. */

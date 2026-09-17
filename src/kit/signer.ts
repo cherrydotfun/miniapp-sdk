@@ -158,13 +158,20 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 /**
  * Create a TransactionSigner from an initialized CherryMiniApp instance.
+ *
+ * The signer's `address` is the payment wallet (`cherry.wallet.publicKey`) at
+ * creation time. Create a new signer — and rebuild transactions — on
+ * `'wallet.changed'`.
  */
 export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSigner {
   if (!cherry.isReady) {
     throw new Error('CherryMiniApp must be initialized before creating a signer. Call cherry.init() first.');
   }
 
-  const address = cherry.user.publicKey;
+  // The host signs with the payment wallet, so that is the slot to fill. It
+  // equals `user.publicKey` unless the host set a separate payer; the fallback
+  // keeps 0.1.x behaviour for an inline launch whose host sent no wallet.
+  const address = cherry.wallet.publicKey ?? cherry.user.publicKey;
   const bridge = getSharedBridge();
 
   return {

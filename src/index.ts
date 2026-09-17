@@ -15,6 +15,9 @@ export {
   type CherryNavigate,
   type CherryWallet,
   type CherryBlinkContext,
+  type CherryWalletChangedEvent,
+  type CherryWalletSwitchResult,
+  type PaymentWalletKind,
   type ShareBlinkOptions,
   type ShareBlinkResult,
 } from './types';
@@ -23,7 +26,7 @@ export {
 export { detectPlatform, isInsideCherry, getCherryEnvironment, type DetectPlatformOptions } from './env';
 
 // Bridge transport (exposed for advanced usage)
-export { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';
+export { Bridge, BridgeError, getSharedBridge, destroySharedBridge, type BridgeErrorCode } from './bridge';
 
 // Main client
 export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from './client';

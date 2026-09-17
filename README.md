@@ -4,6 +4,29 @@ SDK for building mini-apps embedded in [Cherry](https://cherry.fun) messenger. P
 
 Supports both **@solana/web3.js** (legacy wallet-adapter) and **@solana/kit** (modern TransactionSigner).
 
+## Upgrading from 0.1.x — one breaking change
+
+**`wallet.publicKey` is now the PAYER, not the identity.** In 0.1.x
+`useCherryWallet().publicKey`, `cherry.getPublicKey()` and
+`cherry.wallet.publicKey` were aliases of the launch token's `sub` — the
+person's session wallet — because that was the only wallet an app could see.
+They now report the wallet the host will actually sign with
+(`payment_wallet`), which is a different wallet whenever the person picked
+another one of their account to pay with.
+
+Nothing breaks against a host that sends no `payment_wallet`: there the two
+are the same address, as before. Against a current host they diverge, and
+the compiler cannot warn you, so check both uses:
+
+| What you are doing | 0.1.x | Use now |
+| --- | --- | --- |
+| Keying a user in your database, greeting them, comparing identity | `wallet.publicKey` | `user.publicKey` |
+| Building a transaction, naming a fee payer, showing "paying with" | `wallet.publicKey` | `wallet.publicKey` (unchanged) |
+
+And subscribe to `wallet.changed`: the person can switch payer while your app
+runs, and the event carries the new address together with a re-minted launch
+token. See [`sub` is identity, `payment_wallet` is the payer](#sub-is-identity-payment_wallet-is-the-payer).
+
 ## Install
 
 ```bash
@@ -296,6 +319,59 @@ Vanilla JS: `await cherry.share({ params: { score: 9000 } })`.
   (not a bot), with `metadata.senderType = 'user_share'`.
 - The mini-app must declare the `inline:render` permission to be shareable.
 
+## `sub` is identity, `payment_wallet` is the payer
+
+A Cherry account can hold several wallets — its primary wallet, the Cherry ID
+wallet (key custodied by Cherry) and wallets the person linked — and the person
+chooses which one pays in your app. The SDK keeps the two roles apart:
+
+| Field | Source (fullscreen token / inline `host.init`) | Meaning |
+|-------|------------------------------------------------|---------|
+| `cherry.user.publicKey` | `sub` / `viewerWallet` | **Identity.** Key your user records on it. It never changes during a session. |
+| `cherry.user.cherryId` | `cherry_id` / `viewerCherryId` | The person's Cherry ID, when the host provides it. |
+| `cherry.wallet.publicKey` | `payment_wallet ?? sub` / `viewerPaymentWallet ?? viewerWallet` | **Payer.** Fee payer and signer of every transaction you ask Cherry to sign. |
+| `cherry.wallet.custodial` | `payment_wallet_kind === 'app_held'` / `viewerPaymentWalletKind` | `true` for the Cherry ID wallet, `false` for a connected wallet app. |
+
+With a host that predates CherryID wallets (no `payment_wallet`, no
+capabilities), `wallet.publicKey === user.publicKey` — exactly the 0.1.x
+behaviour.
+
+The person can switch the payer while your app is open:
+
+```ts
+import { BridgeError } from '@cherrydotfun/miniapp-sdk';
+
+cherry.on('wallet.changed', ({ publicKey, custodial, token }) => {
+  // cherry.wallet.publicKey (and cherry.launchToken, if `token` is set) are
+  // already updated. Rebuild anything prepared for the previous wallet.
+  rebuildPendingTransactions(publicKey);
+});
+
+if (cherry.hostCapabilities.includes('wallet-switch')) {
+  try {
+    const { publicKey, custodial } = await cherry.wallet.requestSwitch(); // host wallet picker
+  } catch (e) {
+    if (e instanceof BridgeError && e.code === 'USER_REJECTED') {
+      // picker dismissed — keep the current wallet
+    }
+  }
+}
+```
+
+- `requestSwitch()` works in fullscreen and in inline blinks. The host
+  rate-limits it: call it from a user action, never in a loop. Hosts without
+  `'wallet-switch'` in `hostCapabilities` reject the method.
+- The host checks every transaction's fee payer against the selected wallet.
+  A stale transaction is refused — the sign call rejects with a `BridgeError`
+  whose `code` is `'WALLET_CHANGED'` and a `wallet.changed` event follows.
+  Rebuild with the new `wallet.publicKey` and retry.
+- `useCherryWallet().publicKey`, `createCherrySigner()` and
+  `CherryWalletAdapter` all follow the payer. A kit signer captures its address
+  when created — create a new one after `wallet.changed`. The adapter re-emits
+  `connect` with the new key.
+- On your backend, `verifyLaunchToken` returns the same claims: the identity is
+  always `payload.sub`, the payer is `payload.payment_wallet ?? payload.sub`.
+
 ## Launch Token (Backend Verification)
 
 The SDK provides a JWT launch token signed by Cherry's server. Verify it on your backend:
@@ -306,11 +382,18 @@ import { verifyLaunchToken } from '@cherrydotfun/miniapp-sdk';
 const payload = await verifyLaunchToken(token, {
   expectedAppId: 'your-app-id',
   // jwksUrl defaults to https://chat.cherry.fun/.well-known/jwks.json
+  // issuer defaults to https://chat.cherry.fun — a token with another `iss` is rejected
+  // expectedScope: 'inline' | 'fullscreen' — optional; checked only when set
 });
 
 // Always present:
-// payload.sub — wallet address
+// payload.sub — identity wallet (the account's primary wallet)
 // payload.room_id — room where app was opened
+
+// CherryID-aware hosts add (optional in the type):
+// payload.cherry_id           — the person's Cherry ID
+// payload.payment_wallet      — the payer; absent → the payer is `sub`
+// payload.payment_wallet_kind — 'app_held' (Cherry ID wallet) | 'external'
 
 // Embed / fullscreen handshake token also carries:
 // payload.user — { display_name, avatar_url }
@@ -365,7 +448,8 @@ import { CherryMiniApp } from '@cherrydotfun/miniapp-sdk';
 const cherry = new CherryMiniApp();
 await cherry.init();
 
-cherry.user.publicKey;   // wallet address
+cherry.user.publicKey;   // identity wallet
+cherry.wallet.publicKey; // payer — fee payer of your transactions
 cherry.room.title;       // room name
 cherry.launchToken;      // JWT for backend
 
@@ -386,7 +470,7 @@ cherry.on('resumed', () => console.log('App resumed'));
 |------|-------------|
 | `useCherryMiniApp()` | `{ user, room, launchToken, isReady, error }` |
 | `useCherryApp()` | `CherryMiniApp` instance (for kit signer etc.) |
-| `useCherryWallet()` | `{ publicKey, connected, signTransaction, signAllTransactions, signMessage, signAndSendTransaction }` |
+| `useCherryWallet()` | `{ publicKey, custodial, connected, signTransaction, signAllTransactions, signMessage, signAndSendTransaction, requestSwitch }` — `publicKey` is the payer and follows `wallet.changed` |
 | `useCherryNavigate()` | `{ userProfile(id), openRoom(id) }` |
 | `useCherryShare()` | `(opts?) => Promise<{ shared, roomId?, messageId? }>` — share a read-only result snapshot |
 | `useCherryEnvironment(opts?)` | `{ isEmbedded, platform }` — no provider needed; pass `{ strict: true }` to disable fallbacks |
@@ -397,9 +481,13 @@ cherry.on('resumed', () => console.log('App resumed'));
 |-----------------|-------------|
 | `new CherryMiniApp(opts?)` | `opts.initTimeout` (ms, default 10 000); `opts.strict` (disable fallback detection) |
 | `init()` | Wait for Cherry host handshake |
-| `user` | `{ publicKey, displayName, avatarUrl }` |
+| `user` | `{ publicKey, displayName, avatarUrl, cherryId? }` — `publicKey` is the identity (`sub`) |
 | `room` | `{ id, title, memberCount }` |
 | `launchToken` | JWT string for backend verification |
+| `hostCapabilities` | Features the host advertised (e.g. `'wallet-switch'`); `[]` for older hosts |
+| `wallet.publicKey` | The payer (`payment_wallet ?? sub`) |
+| `wallet.custodial` | `true` when the payer is the Cherry ID wallet |
+| `wallet.requestSwitch()` | Open the host's wallet picker → `{ publicKey, custodial }`; rejects `USER_REJECTED` |
 | `wallet.signTransaction(tx)` | Sign a transaction (returns `Uint8Array`) |
 | `wallet.signAllTransactions(txs)` | Sign multiple transactions in a single batch (returns `Uint8Array[]`) |
 | `wallet.signMessage(msg)` | Sign an arbitrary message |
@@ -407,7 +495,7 @@ cherry.on('resumed', () => console.log('App resumed'));
 | `navigate.userProfile(id)` | Open user profile (wallet/domain/@handle) |
 | `navigate.openRoom(id)` | Open room (roomId/@handle) |
 | `share(opts?)` | Share a read-only result snapshot → `{ shared, roomId?, messageId? }` |
-| `on(event, handler)` | Listen to `suspended`, `resumed`, `walletDisconnected` |
+| `on(event, handler)` | Listen to `suspended`, `resumed`, `walletDisconnected`, `blink:update`, `wallet.changed` |
 | `destroy()` | Cleanup listeners |
 
 ### CherryWalletAdapter (solana/)
@@ -432,13 +520,13 @@ The SDK communicates with Cherry via `postMessage`. The protocol is versioned (`
 
 | Message | Direction | Description |
 |---------|-----------|-------------|
-| `cherry:init` | Host → App | Handshake with JWT token |
+| `cherry:init` | Host → App | Handshake with JWT token and optional `capabilities` |
 | `cherry:ready` | App → Host | App acknowledges init |
 | `cherry:request` | App → Host | Wallet/navigate/share operations (e.g. `host.share`, `wallet.signTransaction`) |
 | `cherry:response` | Host → App | Operation result |
-| `cherry:event` | Host → App | Lifecycle events |
+| `cherry:event` | Host → App | Lifecycle events (`suspended`, `resumed`, `walletDisconnected`, `blink:update`, `wallet.changed`) |
 
-App→Host request methods include `wallet.signMessage`, `wallet.signTransaction`, `wallet.signAndSendTransaction`, `navigate.userProfile`, `navigate.openRoom`, and `host.share`. Prefer the typed hooks/methods above over calling the bridge directly.
+App→Host request methods include `wallet.signMessage`, `wallet.signTransaction`, `wallet.signAndSendTransaction`, `wallet.requestSwitch`, `navigate.userProfile`, `navigate.openRoom`, and `host.share`. Prefer the typed hooks/methods above over calling the bridge directly.
 
 ## Privy Integration
 

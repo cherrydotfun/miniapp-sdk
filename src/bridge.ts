@@ -22,9 +22,9 @@ export class Bridge {
   private readonly listener: (event: MessageEvent) => void;
 
   /**
-   * Buffer for cherry:init — if the host sends it before any handler is
-   * registered (i.e. before cherry.init() is called), we keep it here so
-   * waitForInit() can resolve immediately instead of timing out.
+   * Buffer for cherry:init — if the host sends it before cherry.init() is
+   * called, we keep it here so waitForInit() can resolve immediately instead
+   * of timing out.
    */
   private _bufferedInit: BridgeMessage | null = null;
 
@@ -66,10 +66,13 @@ export class Bridge {
         }
       }
 
-      // Buffer cherry:init if no handlers are registered yet, so it is not lost
-      if (message['type'] === 'cherry:init' && this.handlers.length === 0) {
+      // Buffer cherry:init so it is not lost: it can arrive before init()
+      // registers its handler, or while only handlers that ignore it are
+      // registered (the wallet adapter's 'wallet.changed' listener).
+      // waitForInit() drops the copy when it takes the live message.
+      if (message['type'] === 'cherry:init') {
         this._bufferedInit = message;
-        return;
+        if (this.handlers.length === 0) return;
       }
 
       for (const handler of this.handlers) {
@@ -163,10 +166,33 @@ export class Bridge {
   }
 }
 
+/**
+ * Error codes apps are expected to branch on.
+ *
+ * - `USER_REJECTED` — the person declined (a signature, a wallet switch).
+ * - `WALLET_CHANGED` — the host refused to sign because the transaction's fee
+ *   payer is not the currently selected wallet; a `'wallet.changed'` event
+ *   carries the new one. Rebuild the transaction and retry.
+ * - `TIMEOUT` / `DESTROYED` — raised by the SDK itself.
+ * - `INVALID_RESPONSE` — raised by the SDK when a host answer is malformed.
+ * - `UNKNOWN` — the host sent an error without a code.
+ *
+ * Hosts may send other codes; `BridgeError.code` stays an open string.
+ */
+export type BridgeErrorCode =
+  | 'USER_REJECTED'
+  | 'WALLET_CHANGED'
+  | 'TIMEOUT'
+  | 'DESTROYED'
+  | 'INVALID_RESPONSE'
+  | 'UNKNOWN';
+
 export class BridgeError extends Error {
   constructor(
     message: string,
-    public readonly code: string,
+    // `string & {}` keeps editor completion for the known codes while still
+    // accepting any code a newer host sends.
+    public readonly code: BridgeErrorCode | (string & {}),
   ) {
     super(message);
     this.name = 'BridgeError';
