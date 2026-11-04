@@ -9,6 +9,11 @@ export interface BridgeInitMessage extends BridgeMessage {
   type: 'cherry:init';
   version: number;
   token: string;
+  /**
+   * Features this host supports beyond the base protocol (e.g.
+   * `'wallet-switch'`). Hosts released before capability negotiation omit it;
+   * read it through `CherryMiniApp.hostCapabilities`, which defaults to `[]`.
+   */
   capabilities: string[];
 }
 
@@ -45,7 +50,13 @@ export interface CherryEnvironment {
 }
 
 export interface LaunchTokenPayload {
+  /**
+   * The person's identity: their account's primary wallet. It does not change
+   * when they pick another wallet to pay with — see `payment_wallet`.
+   */
   sub: string;
+  /** Token issuer — `https://chat.cherry.fun` for tokens minted by Cherry. */
+  iss?: string;
   app_id: string;
   room_id: string;
   origin: string;
@@ -102,6 +113,52 @@ export interface LaunchTokenPayload {
   blink_url?: string;
   /** Viewer wallet, for fullscreen `launch-as-viewer` tokens. */
   viewer_wallet?: string;
+
+  // ── CherryID claims ───────────────────────────────────────────────────────
+  // Added by hosts that support CherryID wallets; absent on older tokens.
+
+  /** The person's Cherry ID — stable across every wallet linked to the account. */
+  cherry_id?: string;
+  /**
+   * The wallet the person chose to pay with in this app. Transactions must use
+   * it as fee payer / signer. Absent → the payer is `sub`.
+   */
+  payment_wallet?: string;
+  /** Chain of the payment wallet, when specified; legacy wallet is Solana-only. */
+  payment_wallet_chain?: string;
+  /**
+   * Who holds `payment_wallet`'s key: `'app_held'` — the Cherry ID wallet,
+   * custodied by Cherry; `'external'` — a wallet app the person connected.
+   */
+  payment_wallet_kind?: PaymentWalletKind;
+}
+
+/** See `LaunchTokenPayload.payment_wallet_kind`. */
+export type PaymentWalletKind = 'app_held' | 'external';
+
+/**
+ * Settlement chain a wallet operation runs on.
+ *
+ * Cherry signs on **Solana only** today, so this union has a single member — but
+ * it is a union so that enabling another chain (EVM) is an additive
+ * `| 'evm'`, not a breaking change for apps or hosts.
+ *
+ * Wire semantics: an ABSENT chain means `'solana'`. The SDK sends the `chain`
+ * field only for a NON-Solana chain, which keeps every existing (0.1.x) call
+ * byte-for-byte identical on the wire. A chain this SDK cannot serve is refused
+ * locally with `BridgeError.code === 'CHAIN_NOT_SUPPORTED'` and never reaches
+ * the host.
+ */
+export type CherryChain = 'solana';
+
+/** Options for `CherryMiniApp.wallet.signTransaction`. */
+export interface CherrySignTransactionOptions {
+  /**
+   * Chain to sign on. Omit it for `'solana'` — the default and the only chain
+   * supported today. An unsupported chain throws a `BridgeError` with
+   * `code === 'CHAIN_NOT_SUPPORTED'` synchronously, without contacting the host.
+   */
+  chain?: CherryChain;
 }
 
 /**
@@ -160,9 +217,16 @@ export interface CherryBlinkContext {
 }
 
 export interface CherryUser {
+  /**
+   * The person's identity wallet (the launch token's `sub`). Key your user
+   * records on it. It is NOT necessarily the wallet that signs — that is
+   * `CherryMiniApp.wallet.publicKey`.
+   */
   publicKey: string;
   displayName: string;
   avatarUrl: string;
+  /** The person's Cherry ID, when the host provides one. */
+  cherryId?: string;
 }
 
 export interface CherryRoom {
@@ -225,10 +289,66 @@ export interface ShareBlinkResult {
   messageId?: string;
 }
 
+/** Payload of the `'wallet.changed'` event. */
+export interface CherryWalletChangedEvent {
+  /** The wallet that now pays and signs. */
+  publicKey: string;
+  /** True when it is the Cherry ID wallet (key custodied by Cherry). */
+  custodial: boolean;
+  /**
+   * Chain the new wallet signs on, when the host reports one. Absent means
+   * `'solana'` (see {@link CherryChain}); an unknown value is dropped rather
+   * than surfaced under a type that cannot describe it.
+   */
+  chain?: CherryChain;
+  /**
+   * Re-minted launch token carrying the new `payment_wallet`, when the host
+   * re-mints (fullscreen). `CherryMiniApp.launchToken` already holds it; send
+   * it to your backend if you verify the payer there.
+   */
+  token?: string;
+}
+
+/** Result of `CherryMiniApp.wallet.requestSwitch()`. */
+export interface CherryWalletSwitchResult {
+  publicKey: string;
+  custodial: boolean;
+  /** See `CherryWalletChangedEvent.chain`. */
+  chain?: CherryChain;
+}
+
+/**
+ * The wallet a mini-app signs with: the person's payment wallet, which may
+ * differ from their identity (`CherryUser.publicKey`) and may change while the
+ * app is open — the host lets the person switch.
+ *
+ * On `'wallet.changed'`, rebuild any transaction you have prepared: the host
+ * checks that each transaction's fee payer is the currently selected wallet
+ * and refuses a stale one with the `WALLET_CHANGED` error code.
+ */
 export interface CherryWallet {
   publicKey: string;
-  /** Signs a transaction. Accepts Transaction, VersionedTransaction, Uint8Array, or base64 string. Returns signed bytes. */
-  signTransaction(transaction: unknown): Promise<Uint8Array>;
+  /**
+   * True when `publicKey` is the Cherry ID wallet (key custodied by Cherry),
+   * false for a wallet app the person connected. Optional here so existing
+   * implementations of this interface keep compiling; always present on
+   * `CherryMiniApp.wallet`.
+   */
+  custodial?: boolean;
+  /**
+   * Ask the host to let the person pick another wallet. Optional for the same
+   * reason as `custodial`; always present on `CherryMiniApp.wallet`.
+   */
+  requestSwitch?(): Promise<CherryWalletSwitchResult>;
+  /**
+   * Signs a transaction. Accepts Transaction, VersionedTransaction, Uint8Array, or base64 string. Returns signed bytes.
+   * Pass `{ chain }` only to sign on a chain other than Solana; it is validated
+   * locally (see {@link CherrySignTransactionOptions}).
+   */
+  signTransaction(
+    transaction: unknown,
+    options?: CherrySignTransactionOptions,
+  ): Promise<Uint8Array>;
   /** Signs all transactions in a single batch request. Returns array of signed bytes. */
   signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
   /** Signs and sends a transaction. Returns signature string. */
@@ -236,3 +356,36 @@ export interface CherryWallet {
   /** Signs an arbitrary message. Returns signature bytes. */
   signMessage(message: Uint8Array): Promise<Uint8Array>;
 }
+
+/** A host-authorized account; chainId is CAIP-shaped (for example eip155:8453). */
+export interface CherryAccount {
+  address: string;
+  chainId: string;
+  kind: PaymentWalletKind;
+  capabilities: string[];
+}
+
+/** Only methods actually implemented by the host are exposed. */
+export interface CherryEvmRequest {
+  method: 'eth_chainId' | 'eth_accounts' | 'eth_requestAccounts' | 'eth_sendTransaction';
+  params?: readonly unknown[];
+}
+
+/** Native assets use the explicit address supplied by discovery. */
+export interface TradeAssetId { chainId: string; address: string }
+export interface TradeAccountRef { chainId: string; address: string }
+export interface TradePreviewRequest {
+  kind: 'buy' | 'swap' | 'cross-chain'; input: TradeAssetId; output: TradeAssetId;
+  amount: string; slippageBps: number; account: TradeAccountRef; provider?: string;
+}
+export interface TradePreview {
+  reviewId: string; inputAmount: string; outputAmount: string; minOutputAmount: string;
+  provider: string; expiresAt: string;
+}
+export interface TradeOperation { operationId: string; stage: string }
+export interface TradeCapabilities {
+  version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean }>;
+  providers: Array<{ id: string; enabled: boolean }>;
+}
+export interface TradeAsset extends TradeAssetId { symbol: string; decimals: number }
+export interface TradeHolding extends TradeAssetId { amount: string }

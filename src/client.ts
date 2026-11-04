@@ -1,5 +1,5 @@
 import { decodeJwt } from 'jose';
-import { Bridge, getSharedBridge, destroySharedBridge } from './bridge';
+import { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';
 import type { BridgeEvent } from './bridge';
 import {
   BRIDGE_VERSION,
@@ -11,6 +11,18 @@ import {
   type CherryNavigate,
   type LaunchTokenPayload,
   type CherryBlinkContext,
+  type TradePreviewRequest,
+  type TradePreview,
+  type TradeOperation,
+  type TradeCapabilities,
+  type TradeAsset,
+  type TradeHolding,
+  type CherryAccount,
+  type CherryEvmRequest,
+  type CherryChain,
+  type CherrySignTransactionOptions,
+  type CherryWalletChangedEvent,
+  type CherryWalletSwitchResult,
   type ShareBlinkOptions,
   type ShareBlinkResult,
 } from './types';
@@ -20,7 +32,14 @@ export type CherryMiniAppEvent =
   | 'resumed'
   | 'walletDisconnected'
   /** Inline blink params were updated by the bot (`answerCallback.updateBlink`). */
-  | 'blink:update';
+  | 'blink:update'
+  /**
+   * The person switched the wallet they pay with ({@link CherryWalletChangedEvent}).
+   * `wallet.publicKey` / `wallet.custodial` (and `launchToken`, when the host
+   * re-minted it) are already updated when listeners run. Rebuild any
+   * transaction prepared for the previous wallet.
+   */
+  | 'wallet.changed';
 
 type EventListener<T = unknown> = (data: T) => void;
 
@@ -47,7 +66,10 @@ export class CherryMiniApp {
   private _user: CherryUser | null = null;
   private _room: CherryRoom | null = null;
   private _launchToken: string | null = null;
+  /** The payment wallet — what `wallet.publicKey` reports and the host signs with. */
   private _publicKey: string | null = null;
+  private _custodial = false;
+  private _hostCapabilities: string[] = [];
   private _blink: CherryBlinkContext | null = null;
   private readonly initTimeout: number;
 
@@ -85,6 +107,73 @@ export class CherryMiniApp {
     return this._blink;
   }
 
+  /**
+   * Features the host advertised (`cherry:init` `capabilities`, or the inline
+   * `host.init` answer's `capabilities`). `[]` for hosts that predate
+   * capability negotiation and before `init()` resolves. Feature-detect
+   * rather than assuming: e.g. `'wallet-switch'` → `wallet.requestSwitch()`.
+   */
+  get hostCapabilities(): string[] {
+    return [...this._hostCapabilities];
+  }
+
+  /** Accounts explicitly authorized by the viewer, never the full linked-wallet list. */
+  get accounts(): { list(): Promise<CherryAccount[]> } {
+    return { list: async () => {
+      this.requireCapability('accounts-v1');
+      const result = await this.bridge.request('wallet.accounts', {});
+      const accounts = (result as { accounts?: unknown })?.accounts;
+      if (!Array.isArray(accounts) || !accounts.every(isCherryAccount)) {
+        throw new BridgeError('Invalid wallet.accounts response', 'INVALID_RESPONSE');
+      }
+      return accounts.map((account) => ({ ...account, capabilities: [...account.capabilities] }));
+    } };
+  }
+
+  /** EIP-1193-style bridge; unsupported methods fail locally. */
+  get evm(): { request(args: CherryEvmRequest): Promise<unknown> } {
+    return { request: async ({ method, params }) => {
+      this.requireCapability('evm');
+      if (!['eth_chainId', 'eth_accounts', 'eth_requestAccounts', 'eth_sendTransaction'].includes(method)) {
+        throw new BridgeError(`Unsupported EVM method: ${method}`, 'METHOD_NOT_SUPPORTED');
+      }
+      return this.bridge.request(`wallet.eth.${method}`, params === undefined ? {} : { params });
+    } };
+  }
+
+  /** Host-owned trading. Amounts are exact base-unit integer strings. */
+  get trade() {
+    const call = async <T>(method: string, params: Record<string, unknown> = {}): Promise<T> => {
+      this.requireCapability('trading-v1');
+      const result = await this.bridge.request(`trade.${method}`, params);
+      if (!validTradeResponse(method, result)) throw new BridgeError(`Invalid trade.${method} response`, 'INVALID_RESPONSE');
+      return result as T;
+    };
+    return {
+      capabilities: () => call<TradeCapabilities>('capabilities'),
+      assets: () => call<{ assets: TradeAsset[] }>('assets'),
+      holdings: () => call<{ holdings: TradeHolding[] }>('holdings'),
+      preview: (request: TradePreviewRequest) => {
+        if (!/^(0|[1-9][0-9]*)$/.test(request.amount)) return Promise.reject(new BridgeError('amount must be a base-unit integer string', 'INVALID_ARGUMENT'));
+        return call<TradePreview>('preview', { ...request });
+      },
+      request: (request: { reviewId: string; idempotencyKey: string }) => {
+        if (!request.reviewId || !request.idempotencyKey) return Promise.reject(new BridgeError('reviewId and idempotencyKey are required', 'INVALID_ARGUMENT'));
+        return call<TradeOperation>('request', { ...request });
+      },
+      get: (operationId: string) => call<TradeOperation>('get', { operationId }),
+      list: () => call<{ operations: TradeOperation[] }>('list'),
+      resume: (operationId: string) => call<TradeOperation>('resume', { operationId }),
+    };
+  }
+
+  private requireCapability(capability: string): void {
+    this.assertReady();
+    if (!this._hostCapabilities.includes(capability)) {
+      throw new BridgeError(`Host does not support ${capability}`, 'METHOD_NOT_SUPPORTED');
+    }
+  }
+
   // ---- init ----
 
   async init(): Promise<void> {
@@ -110,12 +199,20 @@ export class CherryMiniApp {
     const payload = decodeJwt(initMessage.token) as unknown as LaunchTokenPayload;
 
     this._launchToken = initMessage.token;
-    this._publicKey = payload.sub;
+    // `sub` is the identity and never moves; the payer is a separate claim.
+    // Tokens without it (older hosts) keep the 0.1.x behaviour: payer = sub.
+    const paymentWallet = solanaAddress(payload.payment_wallet, payload.payment_wallet_chain);
+    this._publicKey = paymentWallet ?? solanaAddress(payload.sub);
+    this._custodial = paymentWallet !== null && payload.payment_wallet_kind === 'app_held';
+    this._hostCapabilities = parseCapabilities(initMessage.capabilities);
 
+    const cherryId = nonEmptyString(payload.cherry_id);
     this._user = {
       publicKey: payload.sub,
       displayName: payload.user.display_name,
       avatarUrl: payload.user.avatar_url,
+      // Omitted rather than `undefined` so the object keeps its 0.1.x shape.
+      ...(cherryId !== undefined ? { cherryId } : {}),
     };
 
     this._room = {
@@ -132,17 +229,9 @@ export class CherryMiniApp {
     this.bridge.sendToHost(readyMsg);
 
     // Subscribe to host events (suspended, resumed, walletDisconnected, etc.)
-    this.removeHostListener = this.bridge.startListening((message: BridgeMessage) => {
-      if (message['type'] === 'cherry:event') {
-        const evt = message as unknown as BridgeEvent;
-        // Host events carry their payload under `payload` (e.g. blink:update);
-        // fall back to `data` for older/host-agnostic shapes.
-        this.emit(
-          evt.event as CherryMiniAppEvent,
-          (evt as { payload?: unknown }).payload ?? evt.data,
-        );
-      }
-    });
+    this.removeHostListener = this.bridge.startListening((message) =>
+      this.handleHostMessage(message),
+    );
 
     this._isReady = true;
   }
@@ -168,8 +257,13 @@ export class CherryMiniApp {
       // whatever the token carries so the app can render in a degraded state.
     }
 
+    // `viewerWallet` is the viewer's identity; CherryID-aware hosts add the
+    // payer separately (`viewerPaymentWallet` / `viewerPaymentWalletKind`) and
+    // `viewerCherryId`. Older hosts send none of them → payer = viewerWallet.
     const viewerWallet =
       typeof ctx['viewerWallet'] === 'string' ? (ctx['viewerWallet'] as string) : '';
+    const viewerPaymentWallet = nonEmptyString(ctx['viewerPaymentWallet']);
+    const viewerCherryId = nonEmptyString(ctx['viewerCherryId']);
     let roomId = typeof ctx['roomId'] === 'string' ? (ctx['roomId'] as string) : '';
     const ctxMessageId =
       typeof ctx['messageId'] === 'string' ? (ctx['messageId'] as string) : '';
@@ -190,7 +284,10 @@ export class CherryMiniApp {
         : null;
 
     this._launchToken = token ?? null;
-    this._publicKey = viewerWallet || null;
+    const paymentWallet = solanaAddress(viewerPaymentWallet, ctx['viewerPaymentWalletChain']);
+    this._publicKey = paymentWallet ?? solanaAddress(viewerWallet);
+    this._custodial = paymentWallet !== null && ctx['viewerPaymentWalletKind'] === 'app_held';
+    this._hostCapabilities = parseCapabilities(ctx['capabilities']);
 
     // Decode the launch token for claims the host.init response doesn't carry
     // (sender, miniAppId/appId, source, interactive, token timing).
@@ -204,10 +301,12 @@ export class CherryMiniApp {
       }
     }
 
+    const cherryId = viewerCherryId;
     this._user = {
       publicKey: viewerWallet,
       displayName: '',
       avatarUrl: '',
+      ...(cherryId !== undefined ? { cherryId } : {}),
     };
     this._room = {
       id: roomId,
@@ -247,20 +346,37 @@ export class CherryMiniApp {
       jti: claims.jti ? String(claims.jti) : null,
     };
 
-    // Subscribe to host events (blink:update, suspended, etc.).
-    this.removeHostListener = this.bridge.startListening(
-      (message: BridgeMessage) => {
-        if (message['type'] === 'cherry:event') {
-          const evt = message as unknown as BridgeEvent;
-          this.emit(
-            evt.event as CherryMiniAppEvent,
-            (evt as { payload?: unknown }).payload ?? evt.data,
-          );
-        }
-      },
+    // Subscribe to host events (blink:update, wallet.changed, suspended, etc.).
+    this.removeHostListener = this.bridge.startListening((message) =>
+      this.handleHostMessage(message),
     );
 
     this._isReady = true;
+  }
+
+  /** Host → app events, shared by the fullscreen and inline bootstraps. */
+  private handleHostMessage(message: BridgeMessage): void {
+    if (message['type'] !== 'cherry:event') return;
+    const evt = message as unknown as BridgeEvent;
+    // Host events carry their payload under `payload` (e.g. blink:update);
+    // fall back to `data` for older/host-agnostic shapes.
+    const data = (evt as { payload?: unknown }).payload ?? evt.data;
+    if (evt.event === 'wallet.changed') {
+      this.applyWalletChanged(data);
+      return;
+    }
+    this.emit(evt.event as CherryMiniAppEvent, data);
+  }
+
+  private applyWalletChanged(data: unknown): void {
+    const change = parseWalletChange(data);
+    // A malformed payload is dropped: adopting it would point signing at a
+    // wallet nobody selected, and listeners would rebuild for nothing.
+    if (!change) return;
+    this._publicKey = change.publicKey;
+    this._custodial = change.custodial;
+    if (change.token !== undefined) this._launchToken = change.token;
+    this.emit('wallet.changed', change);
   }
 
   private waitForInit(): Promise<BridgeInitMessage> {
@@ -280,6 +396,9 @@ export class CherryMiniApp {
         if (message['type'] === 'cherry:init') {
           clearTimeout(timer);
           cleanup();
+          // The bridge also buffered this message; drop that copy so it can't
+          // be replayed to a later init().
+          this.bridge.consumeBufferedInit();
           resolve(message as unknown as BridgeInitMessage);
         }
       });
@@ -291,14 +410,33 @@ export class CherryMiniApp {
   /**
    * Returns a stable wallet facade. Methods are arrow functions bound to the
    * outer CherryMiniApp instance so `this` always resolves correctly.
-   * `publicKey` is a getter that reads the live `_publicKey` field.
+   * `publicKey` / `custodial` are getters that read the live fields.
+   *
+   * `publicKey` is the person's PAYMENT wallet — the launch token's
+   * `payment_wallet`, else `sub` — which is what the host signs with. Build
+   * transactions with it as fee payer. It can differ from `user.publicKey`
+   * (the identity) and can change while the app runs: on `'wallet.changed'`
+   * rebuild prepared transactions — the host refuses one whose fee payer is
+   * not the selected wallet, and the sign call rejects with a `BridgeError`
+   * whose `code` is `'WALLET_CHANGED'`.
+   *
+   * `signTransaction` accepts an optional `{ chain }` — see
+   * {@link CherrySignTransactionOptions}: Solana (the default) is never put on
+   * the wire, and a chain the SDK cannot serve is refused locally with
+   * `'CHAIN_NOT_SUPPORTED'`.
    */
   get wallet(): {
     readonly publicKey: string | null;
-    signTransaction(transaction: unknown): Promise<unknown>;
+    /** True when `publicKey` is the Cherry ID wallet (key custodied by Cherry). */
+    readonly custodial: boolean;
+    signTransaction(
+      transaction: unknown,
+      options?: CherrySignTransactionOptions,
+    ): Promise<unknown>;
     signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
     signAndSendTransaction(transaction: unknown): Promise<string>;
     signMessage(message: Uint8Array): Promise<Uint8Array>;
+    requestSwitch(): Promise<CherryWalletSwitchResult>;
   } {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
@@ -306,11 +444,22 @@ export class CherryMiniApp {
       get publicKey(): string | null {
         return self._publicKey;
       },
-      signTransaction(transaction: unknown): Promise<Uint8Array> {
+      get custodial(): boolean {
+        return self._custodial;
+      },
+      signTransaction(
+        transaction: unknown,
+        options?: CherrySignTransactionOptions,
+      ): Promise<Uint8Array> {
         self.assertReady();
+        // Absent (or explicit `'solana'`) means Solana, and Solana is not sent:
+        // the payload stays byte-identical to 0.1.x, which the regression
+        // fixture pins. An unsupported chain throws before any serialization.
+        const chain = requireSupportedChain(options?.chain);
         return self.bridge
           .request('wallet.signTransaction', {
             transaction: serializeTxToBase64(transaction),
+            ...(chain !== undefined ? { chain } : {}),
           })
           .then((result) => {
             const tx = (result as Record<string, unknown>)?.['transaction'] ?? result;
@@ -346,9 +495,47 @@ export class CherryMiniApp {
             return base64ToUint8Array(sig as string);
           });
       },
+      /**
+       * Ask the host to let the person pick another wallet to pay with.
+       * Resolves with the wallet they picked (possibly the current one) and,
+       * when the host reports one, its `chain` (absent = `'solana'`);
+       * rejects with a `BridgeError` whose `code` is `'USER_REJECTED'` when
+       * they dismiss the picker.
+       *
+       * Allowed in inline blinks as well as fullscreen. The host rate-limits
+       * it, so call it from a user gesture, never in a loop or on a timer.
+       * Feature-detect with `hostCapabilities.includes('wallet-switch')`:
+       * older hosts reject the method (`UNKNOWN_METHOD` / `METHOD_NOT_FOUND`).
+       *
+       * The host also fires `'wallet.changed'` (with a re-minted token in
+       * fullscreen) — rebuild prepared transactions there.
+       */
+      requestSwitch(): Promise<CherryWalletSwitchResult> {
+        self.assertReady();
+        return self.bridge.request('wallet.requestSwitch', {}).then((result) => {
+          const picked = parseWalletChange(result);
+          if (!picked) {
+            throw new BridgeError(
+              'Host answered wallet.requestSwitch without a publicKey',
+              'INVALID_RESPONSE',
+            );
+          }
+          // Listeners are notified by the host's 'wallet.changed' event; the
+          // state is also applied here so `wallet.publicKey` is current the
+          // moment this promise resolves, whichever of the two arrives first.
+          self._publicKey = picked.publicKey;
+          self._custodial = picked.custodial;
+          return {
+            publicKey: picked.publicKey,
+            custodial: picked.custodial,
+            ...(picked.chain !== undefined ? { chain: picked.chain } : {}),
+          };
+        });
+      },
     };
   }
 
+  /** Same as `wallet.publicKey`: the payment wallet. */
   getPublicKey(): string | null {
     return this._publicKey;
   }
@@ -394,17 +581,21 @@ export class CherryMiniApp {
 
   // ---- event emitter ----
 
-  on(event: CherryMiniAppEvent, listener: EventListener): void {
+  on(event: 'wallet.changed', listener: EventListener<CherryWalletChangedEvent>): void;
+  on(event: CherryMiniAppEvent, listener: EventListener): void;
+  on(event: CherryMiniAppEvent, listener: EventListener<never>): void {
     let set = this.eventListeners.get(event);
     if (!set) {
       set = new Set();
       this.eventListeners.set(event, set);
     }
-    set.add(listener);
+    set.add(listener as EventListener);
   }
 
-  off(event: CherryMiniAppEvent, listener: EventListener): void {
-    this.eventListeners.get(event)?.delete(listener);
+  off(event: 'wallet.changed', listener: EventListener<CherryWalletChangedEvent>): void;
+  off(event: CherryMiniAppEvent, listener: EventListener): void;
+  off(event: CherryMiniAppEvent, listener: EventListener<never>): void {
+    this.eventListeners.get(event)?.delete(listener as EventListener);
   }
 
   private emit(event: string, data?: unknown): void {
@@ -437,6 +628,65 @@ export class CherryMiniApp {
       throw new Error('CherryMiniApp is not ready. Call init() first.');
     }
   }
+}
+
+// ---- host payload helpers ----
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function parseCapabilities(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((c): c is string => typeof c === 'string') : [];
+}
+
+/**
+ * Validate a `wallet.changed` payload / `wallet.requestSwitch` result:
+ * `{ publicKey, custodial, chain?, token? }`. `null` when there is no usable
+ * wallet.
+ */
+function parseWalletChange(value: unknown): CherryWalletChangedEvent | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  const publicKey = nonEmptyString(v['publicKey']);
+  // This legacy facade is Solana-only, including wallet-switch events.
+  if (publicKey === undefined || !solanaAddress(publicKey, v['chain'])) return null;
+  const token = nonEmptyString(v['token']);
+  const chain = parseChain(v['chain']);
+  return {
+    publicKey,
+    custodial: v['custodial'] === true,
+    // Keys are only added when the host sent them, so the object keeps its
+    // 0.1.x shape for a host that knows nothing about chains.
+    ...(chain !== undefined ? { chain } : {}),
+    ...(token !== undefined ? { token } : {}),
+  };
+}
+
+/**
+ * A chain reported by the host. Only values this SDK can describe are adopted
+ * (see {@link CherryChain}); an unknown one is dropped rather than surfaced
+ * under a type that does not cover it.
+ */
+function parseChain(value: unknown): CherryChain | undefined {
+  const chain = nonEmptyString(value);
+  return chain === 'solana' ? chain : undefined;
+}
+
+/**
+ * Resolve the `chain` option of a signing call to what goes on the wire.
+ * `undefined` for Solana (explicit or implied) — an absent chain IS `'solana'`,
+ * so nothing is sent. Anything else is refused synchronously: the SDK cannot
+ * serve it, and a request would only fail at the host (or hang it).
+ */
+function requireSupportedChain(
+  chain: CherryChain | undefined,
+): CherryChain | undefined {
+  // Typed as `CherryChain`, but callers may be plain JS past a type boundary —
+  // compare as a string so they get the local refusal too.
+  const value: string | undefined = chain;
+  if (value === undefined || value === 'solana') return undefined;
+  throw new BridgeError(`Chain not supported: ${value}`, 'CHAIN_NOT_SUPPORTED');
 }
 
 // ---- launch URL helpers ----
@@ -489,4 +739,51 @@ function base64ToUint8Array(base64: string): Uint8Array {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+function isCherryAccount(value: unknown): value is CherryAccount {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  const chain = v['chainId'];
+  const address = v['address'];
+  const evm = typeof chain === 'string' && /^eip155:[1-9][0-9]*$/.test(chain) && Number.isSafeInteger(Number(chain.slice(7))) && typeof address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(address);
+  const solana = typeof chain === 'string' && /^solana:[a-zA-Z0-9_-]+$/.test(chain) && solanaAddress(address, chain) !== null;
+  return (evm || solana) &&
+    (v['kind'] === 'app_held' || v['kind'] === 'external') &&
+    Array.isArray(v['capabilities']) && v['capabilities'].every((c) => typeof c === 'string');
+}
+
+/** Only 32-byte base58 addresses are admitted to the legacy Solana facade. */
+function solanaAddress(value: unknown, chain?: unknown): string | null {
+  if (chain !== undefined && chain !== 'solana' && !(typeof chain === 'string' && chain.startsWith('solana:'))) return null;
+  if (typeof value !== 'string' || value.length < 32 || value.length > 44) return null;
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let n = 0n;
+  for (const c of value) {
+    const digit = alphabet.indexOf(c);
+    if (digit < 0) return null;
+    n = n * 58n + BigInt(digit);
+  }
+  let size = 0;
+  while (n > 0n) { size++; n >>= 8n; }
+  for (const c of value) { if (c !== '1') break; size++; }
+  return size === 32 ? value : null;
+}
+
+function validTradeResponse(method: string, value: unknown): boolean {
+  const object = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
+  const str = (x: unknown) => typeof x === 'string' && x.length > 0 && x.length <= 4096;
+  const atomic = (x: unknown) => typeof x === 'string' && /^(0|[1-9][0-9]*)$/.test(x) && x.length <= 256;
+  const assetId = (x: Record<string, unknown>) => str(x['chainId']) && str(x['address']);
+  const operation = (x: unknown) => object(x) && str(x['operationId']) && str(x['stage']);
+  if (!object(value)) return false;
+  switch (method) {
+    case 'preview': return str(value['reviewId']) && atomic(value['inputAmount']) && atomic(value['outputAmount']) && atomic(value['minOutputAmount']) && str(value['provider']) && str(value['expiresAt']) && Number.isFinite(Date.parse(value['expiresAt'] as string));
+    case 'request': case 'get': case 'resume': return operation(value);
+    case 'list': return Array.isArray(value['operations']) && value['operations'].length <= 1000 && value['operations'].every(operation);
+    case 'assets': return Array.isArray(value['assets']) && value['assets'].length <= 10000 && value['assets'].every((a: unknown) => object(a) && assetId(a) && str(a['symbol']) && Number.isInteger(a['decimals']) && (a['decimals'] as number) >= 0 && (a['decimals'] as number) <= 255);
+    case 'holdings': return Array.isArray(value['holdings']) && value['holdings'].length <= 10000 && value['holdings'].every((a: unknown) => object(a) && assetId(a) && atomic(a['amount']));
+    case 'capabilities': return value['version'] === 1 && Array.isArray(value['chains']) && value['chains'].length <= 1000 && value['chains'].every((c: unknown) => object(c) && str(c['chainId']) && ['enabled','assets','holdings','trade'].every(k => typeof c[k] === 'boolean')) && Array.isArray(value['providers']) && value['providers'].length <= 1000 && value['providers'].every((p: unknown) => object(p) && str(p['id']) && typeof p['enabled'] === 'boolean');
+    default: return false;
+  }
 }

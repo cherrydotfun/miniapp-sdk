@@ -1,0 +1,2041 @@
+{
+  "fullscreen: old host, webview transport": {
+    "beforeInit": {
+      "isReady": false,
+      "user": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "room": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "launchToken": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "blink": null,
+      "getPublicKey": null,
+      "walletPublicKey": null,
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ],
+      "signBeforeReady": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "shareBeforeReady": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      }
+    },
+    "afterInit": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+          "displayName": "Alice",
+          "avatarUrl": "https://cdn.example/a.png"
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_1",
+          "title": "Lobby",
+          "memberCount": 3
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzNlc0OHJYZXR1VkV0TjVEUFE5OWZqVURHVHdyUWJ2Q0tLZWFxQUsydWlOOSIsImlzcyI6Imh0dHBzOi8vY2hhdC5jaGVycnkuZnVuIiwiYXBwX2lkIjoiYXBwXzEiLCJyb29tX2lkIjoicm9vbV8xIiwib3JpZ2luIjoiaHR0cHM6Ly9nYW1lLmV4YW1wbGUiLCJ1c2VyIjp7ImRpc3BsYXlfbmFtZSI6IkFsaWNlIiwiYXZhdGFyX3VybCI6Imh0dHBzOi8vY2RuLmV4YW1wbGUvYS5wbmcifSwicm9vbSI6eyJ0aXRsZSI6IkxvYmJ5IiwibWVtYmVyX2NvdW50IjozfSwicGVybWlzc2lvbnMiOlsid2FsbGV0OnNpZ24iXSwicmVhY2giOiJwcm9qZWN0IiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDAzMDAsImp0aSI6Imp0aS1lbWJlZC0xIn0.c2ln"
+      },
+      "blink": null,
+      "getPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "calls": {
+      "signTransaction.bytes": {
+        "resolved": {
+          "bytes": [
+            4,
+            5,
+            6
+          ]
+        }
+      },
+      "signTransaction.base64In.rawOut": {
+        "resolved": {
+          "bytes": [
+            6,
+            6
+          ]
+        }
+      },
+      "signTransaction.serializable": {
+        "resolved": {
+          "bytes": [
+            7
+          ]
+        }
+      },
+      "signTransaction.serializable.opts": [
+        {
+          "requireAllSignatures": false
+        }
+      ],
+      "signTransaction.invalid": {
+        "threw": {
+          "name": "TypeError",
+          "message": "Transaction must be a Uint8Array, base64 string, or have a serialize() method"
+        }
+      },
+      "signAllTransactions": {
+        "resolved": [
+          {
+            "bytes": [
+              1
+            ]
+          },
+          {
+            "bytes": [
+              2
+            ]
+          }
+        ]
+      },
+      "signAllTransactions.rawOut": {
+        "resolved": [
+          {
+            "bytes": [
+              3
+            ]
+          }
+        ]
+      },
+      "signAndSendTransaction": {
+        "resolved": "sig-object"
+      },
+      "signAndSendTransaction.rawOut": {
+        "resolved": "sig-raw"
+      },
+      "signMessage": {
+        "resolved": {
+          "bytes": [
+            11,
+            12
+          ]
+        }
+      },
+      "signMessage.rawOut": {
+        "resolved": {
+          "bytes": [
+            13
+          ]
+        }
+      },
+      "navigate.userProfile": {
+        "resolved": null
+      },
+      "navigate.openRoom": {
+        "resolved": {
+          "ok": true
+        }
+      },
+      "share.full": {
+        "resolved": {
+          "shared": true,
+          "roomId": "room_9",
+          "messageId": "msg_9"
+        }
+      },
+      "share.empty": {
+        "resolved": {
+          "shared": false
+        }
+      },
+      "error.userRejected": {
+        "rejected": {
+          "name": "BridgeError",
+          "message": "User rejected the request",
+          "code": "USER_REJECTED"
+        }
+      },
+      "error.string": {
+        "rejected": {
+          "name": "BridgeError",
+          "message": "boom",
+          "code": "UNKNOWN"
+        }
+      },
+      "error.noCode": {
+        "rejected": {
+          "name": "BridgeError",
+          "message": "no code",
+          "code": "UNKNOWN"
+        }
+      },
+      "error.walletChanged": {
+        "rejected": {
+          "name": "BridgeError",
+          "message": "The selected wallet changed",
+          "code": "WALLET_CHANGED"
+        }
+      }
+    },
+    "eventsInfo": {
+      "listenerCount": 1
+    },
+    "events": [
+      {
+        "event": "suspended",
+        "data": "[undefined]"
+      },
+      {
+        "event": "resumed",
+        "data": {
+          "at": 1
+        }
+      },
+      {
+        "event": "walletDisconnected",
+        "data": "[undefined]"
+      },
+      {
+        "event": "blink:update",
+        "data": {
+          "params": {
+            "x": 1
+          },
+          "blink_params_version": 2
+        }
+      },
+      {
+        "event": "resumed",
+        "data": "from-string"
+      }
+    ],
+    "afterCalls": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+          "displayName": "Alice",
+          "avatarUrl": "https://cdn.example/a.png"
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_1",
+          "title": "Lobby",
+          "memberCount": 3
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzNlc0OHJYZXR1VkV0TjVEUFE5OWZqVURHVHdyUWJ2Q0tLZWFxQUsydWlOOSIsImlzcyI6Imh0dHBzOi8vY2hhdC5jaGVycnkuZnVuIiwiYXBwX2lkIjoiYXBwXzEiLCJyb29tX2lkIjoicm9vbV8xIiwib3JpZ2luIjoiaHR0cHM6Ly9nYW1lLmV4YW1wbGUiLCJ1c2VyIjp7ImRpc3BsYXlfbmFtZSI6IkFsaWNlIiwiYXZhdGFyX3VybCI6Imh0dHBzOi8vY2RuLmV4YW1wbGUvYS5wbmcifSwicm9vbSI6eyJ0aXRsZSI6IkxvYmJ5IiwibWVtYmVyX2NvdW50IjozfSwicGVybWlzc2lvbnMiOlsid2FsbGV0OnNpZ24iXSwicmVhY2giOiJwcm9qZWN0IiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDAzMDAsImp0aSI6Imp0aS1lbWJlZC0xIn0.c2ln"
+      },
+      "blink": null,
+      "getPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "pendingOutcome": {
+      "rejected": {
+        "name": "BridgeError",
+        "message": "Bridge destroyed",
+        "code": "DESTROYED"
+      }
+    },
+    "afterDestroy": {
+      "isReady": false,
+      "user": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "room": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "launchToken": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "blink": null,
+      "getPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "sent": [
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:ready",
+          "version": 2
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "AQID"
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#2",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "AQI="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#3",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "Bwg="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#4",
+          "method": "wallet.signTransactions",
+          "params": {
+            "transactions": [
+              "CQ==",
+              "CA=="
+            ]
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#5",
+          "method": "wallet.signTransactions",
+          "params": {
+            "transactions": [
+              "CQ=="
+            ]
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#6",
+          "method": "wallet.signAndSendTransaction",
+          "params": {
+            "transaction": "BQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#7",
+          "method": "wallet.signAndSendTransaction",
+          "params": {
+            "transaction": "BQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#8",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "aGVsbG8="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#9",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "AQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#10",
+          "method": "navigate.userProfile",
+          "params": {
+            "identifier": "alice.sol"
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#11",
+          "method": "navigate.openRoom",
+          "params": {
+            "identifier": "@grp"
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#12",
+          "method": "host.share",
+          "params": {
+            "route": "/result",
+            "params": {
+              "score": 9000
+            },
+            "height": "compact",
+            "initialHeight": 80,
+            "caption": "gg",
+            "previewable": true
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#13",
+          "method": "host.share",
+          "params": {}
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#14",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "AQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#15",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "AQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#16",
+          "method": "wallet.signTransactions",
+          "params": {
+            "transactions": [
+              "AQ=="
+            ]
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#17",
+          "method": "wallet.signAndSendTransaction",
+          "params": {
+            "transaction": "AQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#18",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "Ag=="
+          }
+        }
+      }
+    ]
+  },
+  "fullscreen: cherry:init buffered before init()": {
+    "state": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+          "displayName": "Alice",
+          "avatarUrl": "https://cdn.example/a.png"
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_1",
+          "title": "Lobby",
+          "memberCount": 3
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzNlc0OHJYZXR1VkV0TjVEUFE5OWZqVURHVHdyUWJ2Q0tLZWFxQUsydWlOOSIsImlzcyI6Imh0dHBzOi8vY2hhdC5jaGVycnkuZnVuIiwiYXBwX2lkIjoiYXBwXzEiLCJyb29tX2lkIjoicm9vbV8xIiwib3JpZ2luIjoiaHR0cHM6Ly9nYW1lLmV4YW1wbGUiLCJ1c2VyIjp7ImRpc3BsYXlfbmFtZSI6IkFsaWNlIiwiYXZhdGFyX3VybCI6Imh0dHBzOi8vY2RuLmV4YW1wbGUvYS5wbmcifSwicm9vbSI6eyJ0aXRsZSI6IkxvYmJ5IiwibWVtYmVyX2NvdW50IjozfSwicGVybWlzc2lvbnMiOlsid2FsbGV0OnNpZ24iXSwicmVhY2giOiJwcm9qZWN0IiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDAzMDAsImp0aSI6Imp0aS1lbWJlZC0xIn0.c2ln"
+      },
+      "blink": null,
+      "getPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "sent": [
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:ready",
+          "version": 2
+        }
+      }
+    ]
+  },
+  "fullscreen: init timeout": {
+    "result": {
+      "rejected": {
+        "name": "Error",
+        "message": "cherry:init not received within 20ms"
+      }
+    },
+    "state": {
+      "isReady": false,
+      "user": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "room": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "launchToken": {
+        "threw": {
+          "name": "Error",
+          "message": "CherryMiniApp is not ready. Call init() first."
+        }
+      },
+      "blink": null,
+      "getPublicKey": null,
+      "walletPublicKey": null,
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "sent": []
+  },
+  "fullscreen: old host, iframe transport": {
+    "sign": {
+      "resolved": {
+        "bytes": [
+          1
+        ]
+      }
+    },
+    "state": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+          "displayName": "Alice",
+          "avatarUrl": "https://cdn.example/a.png"
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_1",
+          "title": "Lobby",
+          "memberCount": 3
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzNlc0OHJYZXR1VkV0TjVEUFE5OWZqVURHVHdyUWJ2Q0tLZWFxQUsydWlOOSIsImlzcyI6Imh0dHBzOi8vY2hhdC5jaGVycnkuZnVuIiwiYXBwX2lkIjoiYXBwXzEiLCJyb29tX2lkIjoicm9vbV8xIiwib3JpZ2luIjoiaHR0cHM6Ly9nYW1lLmV4YW1wbGUiLCJ1c2VyIjp7ImRpc3BsYXlfbmFtZSI6IkFsaWNlIiwiYXZhdGFyX3VybCI6Imh0dHBzOi8vY2RuLmV4YW1wbGUvYS5wbmcifSwicm9vbSI6eyJ0aXRsZSI6IkxvYmJ5IiwibWVtYmVyX2NvdW50IjozfSwicGVybWlzc2lvbnMiOlsid2FsbGV0OnNpZ24iXSwicmVhY2giOiJwcm9qZWN0IiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDAzMDAsImp0aSI6Imp0aS1lbWJlZC0xIn0.c2ln"
+      },
+      "blink": null,
+      "getPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "events": [],
+    "sent": [
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:ready",
+          "version": 2
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "Aw=="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      }
+    ]
+  },
+  "inline: old host.init fields": {
+    "afterInit": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+          "displayName": "",
+          "avatarUrl": ""
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_ctx",
+          "title": "",
+          "memberCount": 0
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2NoYXQuY2hlcnJ5LmZ1biIsInNjb3BlIjoiaW5saW5lIiwibW9kZSI6ImlubGluZSIsImFwcF9pZCI6ImFwcF8xIiwibWluaV9hcHBfaWQiOiJtaW5pXzEiLCJyb29tX2lkIjoicm9vbV9jbGFpbXMiLCJtZXNzYWdlX2lkIjoibXNnX2NsYWltcyIsInNlbmRlciI6IjdIVVAxWFFIWlB1SFh5YWdSdk43aTFLV1FKekxBWVYyeGN5R1NqNkJFTk15Iiwicm91dGUiOiIvY2xhaW1zLXJvdXRlIiwicGFyYW1zIjp7ImZyb21Ub2tlbiI6dHJ1ZX0sImhlaWdodCI6Im1lZGl1bSIsImluaXRpYWxfaGVpZ2h0IjoxNTAsImludGVyYWN0aXZlIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDAwMDkwMCwianRpIjoianRpLWlubGluZS0xIn0.c2ln"
+      },
+      "blink": {
+        "messageId": "msg_ctx",
+        "roomId": "room_ctx",
+        "viewerWallet": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+        "sender": "7HUP1XQHZPuHXyagRvN7i1KWQJzLAYV2xcyGSj6BENMy",
+        "miniAppId": "mini_1",
+        "appId": "app_1",
+        "route": "/card",
+        "params": {
+          "score": 5
+        },
+        "height": "tall",
+        "initialHeight": 180,
+        "interactive": true,
+        "source": null,
+        "isPreview": false,
+        "blinkParamsVersion": 1,
+        "issuedAt": 1700000000,
+        "expiresAt": 1700000900,
+        "jti": "jti-inline-1"
+      },
+      "getPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "calls": {
+      "signTransaction.bytes": {
+        "resolved": {
+          "bytes": [
+            4,
+            5,
+            6
+          ]
+        }
+      },
+      "signTransaction.base64In.rawOut": {
+        "resolved": {
+          "bytes": [
+            6,
+            6
+          ]
+        }
+      },
+      "signTransaction.serializable": {
+        "resolved": {
+          "bytes": [
+            7
+          ]
+        }
+      },
+      "signTransaction.serializable.opts": [
+        {
+          "requireAllSignatures": false
+        }
+      ],
+      "signTransaction.invalid": {
+        "threw": {
+          "name": "TypeError",
+          "message": "Transaction must be a Uint8Array, base64 string, or have a serialize() method"
+        }
+      },
+      "signAllTransactions": {
+        "resolved": [
+          {
+            "bytes": [
+              1
+            ]
+          },
+          {
+            "bytes": [
+              2
+            ]
+          }
+        ]
+      },
+      "signAllTransactions.rawOut": {
+        "resolved": [
+          {
+            "bytes": [
+              3
+            ]
+          }
+        ]
+      },
+      "signAndSendTransaction": {
+        "resolved": "sig-object"
+      },
+      "signAndSendTransaction.rawOut": {
+        "resolved": "sig-raw"
+      },
+      "signMessage": {
+        "resolved": {
+          "bytes": [
+            11,
+            12
+          ]
+        }
+      },
+      "signMessage.rawOut": {
+        "resolved": {
+          "bytes": [
+            13
+          ]
+        }
+      },
+      "navigate.userProfile": {
+        "resolved": null
+      },
+      "navigate.openRoom": {
+        "resolved": {
+          "ok": true
+        }
+      },
+      "share.full": {
+        "resolved": {
+          "shared": true,
+          "roomId": "room_9",
+          "messageId": "msg_9"
+        }
+      },
+      "share.empty": {
+        "resolved": {
+          "shared": false
+        }
+      },
+      "error.userRejected": {
+        "rejected": {
+          "name": "BridgeError",
+          "message": "User rejected the request",
+          "code": "USER_REJECTED"
+        }
+      },
+      "error.string": {
+        "rejected": {
+          "name": "BridgeError",
+          "message": "boom",
+          "code": "UNKNOWN"
+        }
+      },
+      "error.noCode": {
+        "rejected": {
+          "name": "BridgeError",
+          "message": "no code",
+          "code": "UNKNOWN"
+        }
+      },
+      "error.walletChanged": {
+        "rejected": {
+          "name": "BridgeError",
+          "message": "The selected wallet changed",
+          "code": "WALLET_CHANGED"
+        }
+      }
+    },
+    "eventsInfo": {
+      "listenerCount": 1
+    },
+    "events": [
+      {
+        "event": "suspended",
+        "data": "[undefined]"
+      },
+      {
+        "event": "resumed",
+        "data": {
+          "at": 1
+        }
+      },
+      {
+        "event": "walletDisconnected",
+        "data": "[undefined]"
+      },
+      {
+        "event": "blink:update",
+        "data": {
+          "params": {
+            "x": 1
+          },
+          "blink_params_version": 2
+        }
+      },
+      {
+        "event": "resumed",
+        "data": "from-string"
+      }
+    ],
+    "afterCalls": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+          "displayName": "",
+          "avatarUrl": ""
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_ctx",
+          "title": "",
+          "memberCount": 0
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2NoYXQuY2hlcnJ5LmZ1biIsInNjb3BlIjoiaW5saW5lIiwibW9kZSI6ImlubGluZSIsImFwcF9pZCI6ImFwcF8xIiwibWluaV9hcHBfaWQiOiJtaW5pXzEiLCJyb29tX2lkIjoicm9vbV9jbGFpbXMiLCJtZXNzYWdlX2lkIjoibXNnX2NsYWltcyIsInNlbmRlciI6IjdIVVAxWFFIWlB1SFh5YWdSdk43aTFLV1FKekxBWVYyeGN5R1NqNkJFTk15Iiwicm91dGUiOiIvY2xhaW1zLXJvdXRlIiwicGFyYW1zIjp7ImZyb21Ub2tlbiI6dHJ1ZX0sImhlaWdodCI6Im1lZGl1bSIsImluaXRpYWxfaGVpZ2h0IjoxNTAsImludGVyYWN0aXZlIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDAwMDkwMCwianRpIjoianRpLWlubGluZS0xIn0.c2ln"
+      },
+      "blink": {
+        "messageId": "msg_ctx",
+        "roomId": "room_ctx",
+        "viewerWallet": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+        "sender": "7HUP1XQHZPuHXyagRvN7i1KWQJzLAYV2xcyGSj6BENMy",
+        "miniAppId": "mini_1",
+        "appId": "app_1",
+        "route": "/card",
+        "params": {
+          "score": 5
+        },
+        "height": "tall",
+        "initialHeight": 180,
+        "interactive": true,
+        "source": null,
+        "isPreview": false,
+        "blinkParamsVersion": 1,
+        "issuedAt": 1700000000,
+        "expiresAt": 1700000900,
+        "jti": "jti-inline-1"
+      },
+      "getPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "sent": [
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "host.init",
+          "params": {}
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#2",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "AQID"
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#3",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "AQI="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#4",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "Bwg="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#5",
+          "method": "wallet.signTransactions",
+          "params": {
+            "transactions": [
+              "CQ==",
+              "CA=="
+            ]
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#6",
+          "method": "wallet.signTransactions",
+          "params": {
+            "transactions": [
+              "CQ=="
+            ]
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#7",
+          "method": "wallet.signAndSendTransaction",
+          "params": {
+            "transaction": "BQ=="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#8",
+          "method": "wallet.signAndSendTransaction",
+          "params": {
+            "transaction": "BQ=="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#9",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "aGVsbG8="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#10",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "AQ=="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#11",
+          "method": "navigate.userProfile",
+          "params": {
+            "identifier": "alice.sol"
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#12",
+          "method": "navigate.openRoom",
+          "params": {
+            "identifier": "@grp"
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#13",
+          "method": "host.share",
+          "params": {
+            "route": "/result",
+            "params": {
+              "score": 9000
+            },
+            "height": "compact",
+            "initialHeight": 80,
+            "caption": "gg",
+            "previewable": true
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#14",
+          "method": "host.share",
+          "params": {}
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#15",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "AQ=="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#16",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "AQ=="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#17",
+          "method": "wallet.signTransactions",
+          "params": {
+            "transactions": [
+              "AQ=="
+            ]
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      },
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#18",
+          "method": "wallet.signAndSendTransaction",
+          "params": {
+            "transaction": "AQ=="
+          }
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      }
+    ]
+  },
+  "inline: host.init rejected → token claims only": {
+    "state": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "",
+          "displayName": "",
+          "avatarUrl": ""
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_claims",
+          "title": "",
+          "memberCount": 0
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2NoYXQuY2hlcnJ5LmZ1biIsInNjb3BlIjoiaW5saW5lIiwibW9kZSI6ImlubGluZSIsImFwcF9pZCI6ImFwcF8xIiwibWluaV9hcHBfaWQiOiJtaW5pXzEiLCJyb29tX2lkIjoicm9vbV9jbGFpbXMiLCJtZXNzYWdlX2lkIjoibXNnX2NsYWltcyIsInNlbmRlciI6IjdIVVAxWFFIWlB1SFh5YWdSdk43aTFLV1FKekxBWVYyeGN5R1NqNkJFTk15Iiwicm91dGUiOiIvY2xhaW1zLXJvdXRlIiwicGFyYW1zIjp7ImZyb21Ub2tlbiI6dHJ1ZX0sImhlaWdodCI6Im1lZGl1bSIsImluaXRpYWxfaGVpZ2h0IjoxNTAsImludGVyYWN0aXZlIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDAwMDkwMCwianRpIjoianRpLWlubGluZS0xIn0.c2ln"
+      },
+      "blink": {
+        "messageId": "msg_claims",
+        "roomId": "room_claims",
+        "viewerWallet": "",
+        "sender": "7HUP1XQHZPuHXyagRvN7i1KWQJzLAYV2xcyGSj6BENMy",
+        "miniAppId": "mini_1",
+        "appId": "app_1",
+        "route": "/claims-route",
+        "params": {},
+        "height": "medium",
+        "initialHeight": 150,
+        "interactive": true,
+        "source": null,
+        "isPreview": false,
+        "blinkParamsVersion": null,
+        "issuedAt": 1700000000,
+        "expiresAt": 1700000900,
+        "jti": "jti-inline-1"
+      },
+      "getPublicKey": null,
+      "walletPublicKey": null,
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "events": [],
+    "sent": [
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "host.init",
+          "params": {}
+        }
+      }
+    ]
+  },
+  "inline: empty host.init, no token": {
+    "state": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "",
+          "displayName": "",
+          "avatarUrl": ""
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "",
+          "title": "",
+          "memberCount": 0
+        }
+      },
+      "launchToken": {
+        "returned": null
+      },
+      "blink": {
+        "messageId": "",
+        "roomId": "",
+        "viewerWallet": "",
+        "sender": null,
+        "miniAppId": null,
+        "appId": null,
+        "route": "/",
+        "params": {},
+        "height": "medium",
+        "initialHeight": null,
+        "interactive": true,
+        "source": null,
+        "isPreview": false,
+        "blinkParamsVersion": null,
+        "issuedAt": null,
+        "expiresAt": null,
+        "jti": null
+      },
+      "getPublicKey": null,
+      "walletPublicKey": null,
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "sent": [
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "host.init",
+          "params": {}
+        }
+      }
+    ]
+  },
+  "inline: non-string host.init fields are ignored": {
+    "state": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "",
+          "displayName": "",
+          "avatarUrl": ""
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_claims",
+          "title": "",
+          "memberCount": 0
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2NoYXQuY2hlcnJ5LmZ1biIsInNjb3BlIjoiaW5saW5lIiwibW9kZSI6ImlubGluZSIsImFwcF9pZCI6ImFwcF8xIiwibWluaV9hcHBfaWQiOiJtaW5pXzEiLCJyb29tX2lkIjoicm9vbV9jbGFpbXMiLCJtZXNzYWdlX2lkIjoibXNnX2NsYWltcyIsInNlbmRlciI6IjdIVVAxWFFIWlB1SFh5YWdSdk43aTFLV1FKekxBWVYyeGN5R1NqNkJFTk15Iiwicm91dGUiOiIvY2xhaW1zLXJvdXRlIiwicGFyYW1zIjp7ImZyb21Ub2tlbiI6dHJ1ZX0sImhlaWdodCI6Im1lZGl1bSIsImluaXRpYWxfaGVpZ2h0IjoxNTAsImludGVyYWN0aXZlIjpmYWxzZSwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA5MDAsImp0aSI6Imp0aS1pbmxpbmUtMSIsInNvdXJjZSI6InVzZXJfc2hhcmUifQ.c2ln"
+      },
+      "blink": {
+        "messageId": "msg_claims",
+        "roomId": "room_claims",
+        "viewerWallet": "",
+        "sender": "7HUP1XQHZPuHXyagRvN7i1KWQJzLAYV2xcyGSj6BENMy",
+        "miniAppId": "mini_1",
+        "appId": "app_1",
+        "route": "/claims-route",
+        "params": {},
+        "height": "medium",
+        "initialHeight": 150,
+        "interactive": false,
+        "source": "user_share",
+        "isPreview": false,
+        "blinkParamsVersion": null,
+        "issuedAt": 1700000000,
+        "expiresAt": 1700000900,
+        "jti": "jti-inline-1"
+      },
+      "getPublicKey": null,
+      "walletPublicKey": null,
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "sent": [
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "host.init",
+          "params": {}
+        }
+      }
+    ]
+  },
+  "preview: share-picker render": {
+    "state": {
+      "isReady": true,
+      "user": {
+        "returned": {
+          "publicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+          "displayName": "",
+          "avatarUrl": ""
+        }
+      },
+      "room": {
+        "returned": {
+          "id": "room_claims",
+          "title": "",
+          "memberCount": 0
+        }
+      },
+      "launchToken": {
+        "returned": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2NoYXQuY2hlcnJ5LmZ1biIsInNjb3BlIjoiaW5saW5lIiwibW9kZSI6ImlubGluZSIsImFwcF9pZCI6ImFwcF8xIiwibWluaV9hcHBfaWQiOiJtaW5pXzEiLCJyb29tX2lkIjoicm9vbV9jbGFpbXMiLCJtZXNzYWdlX2lkIjoibXNnX2NsYWltcyIsInNlbmRlciI6IjdIVVAxWFFIWlB1SFh5YWdSdk43aTFLV1FKekxBWVYyeGN5R1NqNkJFTk15Iiwicm91dGUiOiIvY2xhaW1zLXJvdXRlIiwicGFyYW1zIjp7ImZyb21Ub2tlbiI6dHJ1ZX0sImhlaWdodCI6Im1lZGl1bSIsImluaXRpYWxfaGVpZ2h0IjoxNTAsImludGVyYWN0aXZlIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDAwMDkwMCwianRpIjoianRpLWlubGluZS0xIn0.c2ln"
+      },
+      "blink": {
+        "messageId": "msg_claims",
+        "roomId": "room_claims",
+        "viewerWallet": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+        "sender": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+        "miniAppId": "mini_1",
+        "appId": "app_1",
+        "route": "/result",
+        "params": {
+          "score": 1
+        },
+        "height": "medium",
+        "initialHeight": 150,
+        "interactive": false,
+        "source": "preview",
+        "isPreview": true,
+        "blinkParamsVersion": null,
+        "issuedAt": 1700000000,
+        "expiresAt": 1700000900,
+        "jti": "jti-inline-1"
+      },
+      "getPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletPublicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+      "walletMethods": [
+        [
+          "signTransaction",
+          "function"
+        ],
+        [
+          "signAllTransactions",
+          "function"
+        ],
+        [
+          "signAndSendTransaction",
+          "function"
+        ],
+        [
+          "signMessage",
+          "function"
+        ]
+      ]
+    },
+    "sent": [
+      {
+        "transport": "iframe",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "host.init",
+          "params": {}
+        },
+        "options": {
+          "targetOrigin": "*",
+          "transferUserActivation": true
+        }
+      }
+    ]
+  },
+  "kit: createCherrySigner": {
+    "beforeReady": {
+      "threw": {
+        "name": "Error",
+        "message": "CherryMiniApp must be initialized before creating a signer. Call cherry.init() first."
+      }
+    },
+    "address": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+    "wireSummary": {
+      "sigCount": 2,
+      "slot0": true,
+      "slot1NonZero": true,
+      "messageIntact": true
+    },
+    "signed": {
+      "resolved": [
+        {
+          "messageBytes": {
+            "bytes": [
+              2,
+              0,
+              0,
+              2,
+              93,
+              94,
+              95,
+              96,
+              97,
+              98,
+              99,
+              100,
+              101,
+              102,
+              103,
+              104,
+              105,
+              106,
+              107,
+              108,
+              109,
+              110,
+              111,
+              112,
+              113,
+              114,
+              115,
+              116,
+              117,
+              118,
+              119,
+              120,
+              121,
+              122,
+              123,
+              124,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0
+            ]
+          },
+          "signatures": {
+            "7HUP1XQHZPuHXyagRvN7i1KWQJzLAYV2xcyGSj6BENMy": {
+              "bytes": [
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7,
+                7
+              ]
+            },
+            "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9": {
+              "bytes": [
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171,
+                171
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "notSigner": {
+      "rejected": {
+        "name": "Error",
+        "message": "Cherry wallet (36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9) is not a required signer for transaction #0."
+      }
+    },
+    "messages": {
+      "resolved": [
+        {
+          "bytes": [
+            1,
+            2
+          ]
+        },
+        {
+          "bytes": [
+            3
+          ]
+        }
+      ]
+    },
+    "sent": [
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:ready",
+          "version": 2
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "wallet.signTransactions",
+          "params": "[random placeholder: see wireSummary]"
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#2",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "AQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#3",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "Ag=="
+          }
+        }
+      }
+    ]
+  },
+  "solana: CherryWalletAdapter": {
+    "readyState": "Installed",
+    "signBeforeConnect": {
+      "rejected": {
+        "name": "WalletNotConnectedError",
+        "message": ""
+      }
+    },
+    "connect": {
+      "resolved": "[undefined]"
+    },
+    "publicKey": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+    "connectEvents": [
+      "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9"
+    ],
+    "signTx": {
+      "resolved": {
+        "feePayer": "36W48rXetuVEtN5DPQ99fjUDGTwrQbvCKKeaqAK2uiN9",
+        "sigs": 1
+      }
+    },
+    "signMessage": {
+      "resolved": {
+        "bytes": [
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    "signMessageWalletChanged": {
+      "rejected": {
+        "name": "WalletSignMessageError",
+        "message": "The selected wallet changed",
+        "inner": {
+          "name": "BridgeError",
+          "message": "The selected wallet changed",
+          "code": "WALLET_CHANGED"
+        }
+      }
+    },
+    "send": {
+      "resolved": "sig-adapter"
+    },
+    "afterDisconnect": null,
+    "disconnectEvents": [
+      "disconnect"
+    ],
+    "sent": [
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#1",
+          "method": "wallet.connect"
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#2",
+          "method": "wallet.signTransaction",
+          "params": {
+            "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT5dXl9gYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3wBAgIAAQwCAAAAAQAAAAAAAAA="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#3",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "CQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#4",
+          "method": "wallet.signMessage",
+          "params": {
+            "message": "CQ=="
+          }
+        }
+      },
+      {
+        "transport": "webview",
+        "message": {
+          "type": "cherry:request",
+          "id": "req#5",
+          "method": "wallet.signAndSendTransaction",
+          "params": {
+            "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT5dXl9gYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3wBAgIAAQwCAAAAAQAAAAAAAAA="
+          }
+        }
+      }
+    ]
+  }
+}

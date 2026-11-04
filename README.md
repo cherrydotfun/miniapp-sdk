@@ -496,3 +496,22 @@ This package includes a [Claude Code / Codex skill](./skills/README.md) that aut
 ## License
 
 MIT
+
+### Multichain accounts and trading (prerelease)
+
+Check `app.hostCapabilities` after initialization. `accounts-v1` enables
+`app.accounts.list()`, which returns only accounts the host authorizes to this
+app, each with its chain ID and capabilities. `evm` enables
+`app.evm.request({ method, params })` for `eth_chainId`, `eth_accounts`,
+`eth_requestAccounts`, and `eth_sendTransaction` where the host supports them.
+The existing `app.wallet` and Solana adapters remain Solana-only; `user.publicKey`
+remains the legacy identity subject. Inline viewer identity comes from the host,
+not from the shared author's token.
+
+`trading-v1` enables `app.trade.capabilities()`, `assets()`, `holdings()`,
+`preview()`, `request()`, `get()`, `list()` and `resume()`. Discovery supplies
+chain and native asset identifiers. Pass amounts as exact base-unit integer
+strings and retain a stable `idempotencyKey` when retrying a request for a
+`reviewId`. `request()` returns an operation ID before settlement; poll `get()`
+for progress. The host owns confirmation and execution. Hosts without these
+capabilities reject the corresponding SDK methods locally.

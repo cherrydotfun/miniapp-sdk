@@ -9,11 +9,22 @@ export async function verifyLaunchToken(
     jwksUrl?: string;
     expectedAppId: string;
     expectedOrigin?: string;
+    /**
+     * Require this issuer when supplied. Omitted preserves legacy verification.
+     */
+    issuer?: string;
+    /**
+     * Required `scope` claim (`'inline'` for blink cards, `'fullscreen'` for
+     * the runner). Not checked when omitted — embed `cherry:init` tokens carry
+     * no scope.
+     */
+    expectedScope?: string;
   },
 ): Promise<LaunchTokenPayload> {
   const jwks = jose.createRemoteJWKSet(new URL(options.jwksUrl ?? DEFAULT_JWKS_URL));
   const { payload } = await jose.jwtVerify(token, jwks, {
     algorithms: ['RS256'],
+    ...(options.issuer !== undefined ? { issuer: options.issuer } : {}),
   });
 
   if (payload['app_id'] !== options.expectedAppId) {
@@ -24,6 +35,11 @@ export async function verifyLaunchToken(
   if (options.expectedOrigin && payload['origin'] !== options.expectedOrigin) {
     throw new Error(
       `Token origin mismatch: expected ${options.expectedOrigin}, got ${String(payload['origin'])}`,
+    );
+  }
+  if (options.expectedScope !== undefined && payload['scope'] !== options.expectedScope) {
+    throw new Error(
+      `Token scope mismatch: expected ${options.expectedScope}, got ${String(payload['scope'])}`,
     );
   }
 

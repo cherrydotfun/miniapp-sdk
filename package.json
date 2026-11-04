@@ -1,6 +1,6 @@
 {
   "name": "@cherrydotfun/miniapp-sdk",
-  "version": "0.1.21",
+  "version": "0.3.0-multichain.0",
   "description": "SDK for building mini-apps embedded in Cherry messenger",
   "license": "MIT",
   "author": "Cherry.fun <dev@cherry.fun>",
@@ -57,6 +57,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
