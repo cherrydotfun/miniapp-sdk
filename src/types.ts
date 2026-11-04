@@ -381,6 +381,18 @@ export interface TradePreviewRequest {
 export interface TradePreview {
   reviewId: string; inputAmount: string; outputAmount: string; minOutputAmount: string;
   provider: string; expiresAt: string;
+  input: TradeAssetId; output: TradeAssetId; account: TradeAccountRef;
+  fees: TradeFee[]; nativeBudget: TradeNativeBudget | null;
+  constraints: { kind: TradePreviewRequest['kind']; slippageBps: number };
+}
+export interface TradeFee { label: string; bps?: number; amount?: string; note?: string }
+export interface TradeNativeBudget {
+  chainId: string; payer: string; nativeSymbol: string; nativeDecimals: number;
+  inputToken: 'native' | { contract: string }; inputAmount: string; rail: string;
+  slippageBps?: number; sourceNativeAmount: string; networkFee?: string;
+  accountRent?: string; routeFee?: string; approvalFee?: string; otherNative?: string;
+  minimumRequired: string; totalRequired?: string; balance?: string; shortfall?: string;
+  complete: boolean; estimated: boolean; quotedAt: string; simulationChecked?: boolean; canPay?: boolean;
 }
 export interface TradeOperation { operationId: string; stage: string }
 export interface TradeCapabilities {

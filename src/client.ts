@@ -153,9 +153,14 @@ export class CherryMiniApp {
       capabilities: () => call<TradeCapabilities>('capabilities'),
       assets: (filter: { q?: string; chainId?: string; limit?: number } = {}) => call<{ assets: TradeAsset[] }>('assets', { ...filter }),
       holdings: () => call<{ holdings: TradeHolding[]; unavailableChains?: string[] }>('holdings'),
-      preview: (request: TradePreviewRequest) => {
-        if (!/^(0|[1-9][0-9]*)$/.test(request.amount)) return Promise.reject(new BridgeError('amount must be a base-unit integer string', 'INVALID_ARGUMENT'));
-        return call<TradePreview>('preview', { ...request });
+      preview: async (request: TradePreviewRequest) => {
+        if (!/^(0|[1-9][0-9]*)$/.test(request.amount)) throw new BridgeError('amount must be a base-unit integer string', 'INVALID_ARGUMENT');
+        const result = await call<TradePreview>('preview', { ...request });
+        const same = (a: { chainId: string; address: string }, b: { chainId: string; address: string }) => a.chainId === b.chainId && a.address === b.address;
+        if (!same(result.input, request.input) || !same(result.output, request.output) || !same(result.account, request.account) || result.inputAmount !== request.amount || result.constraints.kind !== request.kind || result.constraints.slippageBps !== request.slippageBps || (request.provider !== undefined && result.provider !== request.provider)) {
+          throw new BridgeError('Trade preview does not match the request', 'INVALID_RESPONSE');
+        }
+        return result;
       },
       request: (request: { reviewId: string; idempotencyKey: string }) => {
         if (!request.reviewId || !request.idempotencyKey) return Promise.reject(new BridgeError('reviewId and idempotencyKey are required', 'INVALID_ARGUMENT'));
@@ -776,9 +781,12 @@ function validTradeResponse(method: string, value: unknown): boolean {
   const atomic = (x: unknown) => typeof x === 'string' && /^(0|[1-9][0-9]*)$/.test(x) && x.length <= 256;
   const assetId = (x: Record<string, unknown>) => str(x['chainId']) && str(x['address']);
   const operation = (x: unknown) => object(x) && str(x['operationId']) && str(x['stage']);
+  const optionalNumber = (x: unknown) => x === undefined || (typeof x === 'number' && Number.isInteger(x) && x >= 0);
+  const fee = (x: unknown) => object(x) && str(x['label']) && optionalNumber(x['bps']) && (x['amount'] === undefined || atomic(x['amount'])) && (x['note'] === undefined || str(x['note']));
+  const budget = (x: unknown) => x === null || (object(x) && str(x['chainId']) && str(x['payer']) && str(x['nativeSymbol']) && typeof x['nativeDecimals'] === 'number' && Number.isInteger(x['nativeDecimals']) && x['nativeDecimals'] >= 0 && x['nativeDecimals'] <= 255 && (x['inputToken'] === 'native' || (object(x['inputToken']) && str(x['inputToken']['contract']))) && str(x['rail']) && optionalNumber(x['slippageBps']) && ['inputAmount', 'sourceNativeAmount', 'minimumRequired'].every(k => atomic(x[k])) && ['networkFee', 'accountRent', 'routeFee', 'approvalFee', 'otherNative', 'totalRequired', 'balance', 'shortfall'].every(k => x[k] === undefined || atomic(x[k])) && typeof x['complete'] === 'boolean' && typeof x['estimated'] === 'boolean' && str(x['quotedAt']) && ['simulationChecked', 'canPay'].every(k => x[k] === undefined || typeof x[k] === 'boolean'));
   if (!object(value)) return false;
   switch (method) {
-    case 'preview': return str(value['reviewId']) && atomic(value['inputAmount']) && atomic(value['outputAmount']) && atomic(value['minOutputAmount']) && str(value['provider']) && str(value['expiresAt']) && Number.isFinite(Date.parse(value['expiresAt'] as string));
+    case 'preview': return str(value['reviewId']) && atomic(value['inputAmount']) && atomic(value['outputAmount']) && atomic(value['minOutputAmount']) && str(value['provider']) && str(value['expiresAt']) && Number.isFinite(Date.parse(value['expiresAt'] as string)) && object(value['input']) && assetId(value['input']) && object(value['output']) && assetId(value['output']) && object(value['account']) && assetId(value['account']) && Array.isArray(value['fees']) && value['fees'].length <= 100 && value['fees'].every(fee) && budget(value['nativeBudget']) && object(value['constraints']) && ['buy', 'swap', 'cross-chain'].includes(String(value['constraints']['kind'])) && typeof value['constraints']['slippageBps'] === 'number' && Number.isInteger(value['constraints']['slippageBps']) && value['constraints']['slippageBps'] >= 0 && value['constraints']['slippageBps'] <= 10000;
     case 'request': case 'get': case 'resume': return operation(value);
     case 'list': return Array.isArray(value['operations']) && value['operations'].length <= 1000 && value['operations'].every(operation);
     case 'assets': return Array.isArray(value['assets']) && value['assets'].length <= 10000 && value['assets'].every((a: unknown) => object(a) && assetId(a) && str(a['symbol']) && Number.isInteger(a['decimals']) && (a['decimals'] as number) >= 0 && (a['decimals'] as number) <= 255);

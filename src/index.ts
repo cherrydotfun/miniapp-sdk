@@ -18,6 +18,8 @@ export {
   type TradeAccountRef,
   type TradePreviewRequest,
   type TradePreview,
+  type TradeFee,
+  type TradeNativeBudget,
   type TradeOperation,
   type TradeCapabilities,
   type TradeAsset,
