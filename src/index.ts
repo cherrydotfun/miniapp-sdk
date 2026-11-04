@@ -22,6 +22,7 @@ export {
   type TradeNativeBudget,
   type TradeOperation,
   type TradeCapabilities,
+  type TradeBudgetPolicy,
   type TradeAsset,
   type TradeHolding,
   type CherryAccount,

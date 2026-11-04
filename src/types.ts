@@ -402,9 +402,10 @@ export interface TradeOperation {
   kind?: TradePreviewRequest['kind']; input?: TradeAssetId; output?: TradeAssetId;
   inputAmount?: string; outputAmount?: string;
 }
+export type TradeBudgetPolicy = 'complete-required' | 'reviewed-partial';
 export interface TradeCapabilities {
-  budgetPolicy?: 'complete-required' | 'reviewed-partial';
-  version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean; active?: boolean; routeAvailable?: boolean; displayName?: string; nativeSymbol?: string; nativeDecimals?: number; iconUrl?: string; explorerUrl?: string; unavailableReason?: string }>;
+  budgetPolicy?: TradeBudgetPolicy;
+  version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean; budgetPolicy?: TradeBudgetPolicy; active?: boolean; routeAvailable?: boolean; displayName?: string; nativeSymbol?: string; nativeDecimals?: number; iconUrl?: string; explorerUrl?: string; unavailableReason?: string }>;
   providers: Array<{ id: string; enabled: boolean; corridors?: Array<{ originChainId: string; destChainId: string }> }>;
 }
 export interface TradeAsset extends TradeAssetId {

@@ -638,6 +638,11 @@ test('budget policy accepts only supported host-reviewed modes', async () => {
   expect((await app.trade.capabilities()).budgetPolicy).toBe('reviewed-partial');
   host.answerNext('trade.capabilities', { result: { version: 1, chains: [], providers: [], budgetPolicy: 'automatic' } });
   await expect(app.trade.capabilities()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  const chain = { chainId: 'solana:mainnet', enabled: true, assets: true, holdings: true, trade: true, budgetPolicy: 'reviewed-partial' };
+  host.answerNext('trade.capabilities', { result: { version: 1, chains: [chain], providers: [] } });
+  expect((await app.trade.capabilities()).chains[0]?.budgetPolicy).toBe('reviewed-partial');
+  host.answerNext('trade.capabilities', { result: { version: 1, chains: [{ ...chain, budgetPolicy: 'automatic' }], providers: [] } });
+  await expect(app.trade.capabilities()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
 });
 
 test('destroy clears host capabilities and a new legacy session cannot use new methods', async () => {
