@@ -572,6 +572,13 @@ export class CherryMiniApp {
 
   // ---- share ----
 
+  /** Open fullscreen as the viewer. Route/params require a supporting host. */
+  requestExpand(options?: { route?: string; params?: Record<string, unknown> }): Promise<void> {
+    this.assertReady();
+    if (options && (options.route !== undefined || options.params !== undefined)) this.requireCapability('viewer-expand-v1');
+    return this.bridge.request('host.requestExpand', options ? { ...options } : {}) as Promise<void>;
+  }
+
   /**
    * Hand a "result" snapshot to the Cherry host so the user can share it into
    * a DM or group as an interactive blink. The host opens a recipient picker

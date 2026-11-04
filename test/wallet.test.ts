@@ -603,3 +603,14 @@ test('lookup is capability gated and sends only the saved idempotency and review
   expect(await app.trade.lookup({ reviewId: 'r', idempotencyKey: 'k' })).toEqual({ operationId: 'op', stage: 'unknown' });
   expect(host.requests('trade.lookup')[0]?.['params']).toEqual({ reviewId: 'r', idempotencyKey: 'k' });
 });
+
+test('viewer expand forwards bounded context only on a supporting host', async () => {
+  const first = await fullscreen();
+  await expect(Promise.resolve().then(() => first.app.requestExpand({ route:'/trade', params:{chainId:'eip155:8453'} }))).rejects.toMatchObject({ code:'METHOD_NOT_SUPPORTED' });
+  expect(first.host.requests('host.requestExpand')).toHaveLength(0);
+  uninstallHost();
+  const { app, host } = await fullscreen({}, { capabilities:['viewer-expand-v1'] });
+  host.answerNext('host.requestExpand', { result:{} });
+  await app.requestExpand({route:'/trade',params:{chainId:'eip155:8453'}});
+  expect(host.requests('host.requestExpand')[0]?.['params']).toEqual({route:'/trade',params:{chainId:'eip155:8453'}});
+});
