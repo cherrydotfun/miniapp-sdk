@@ -515,3 +515,52 @@ strings and retain a stable `idempotencyKey` when retrying a request for a
 `reviewId`. `request()` returns an operation ID before settlement; poll `get()`
 for progress. The host owns confirmation and execution. Hosts without these
 capabilities reject the corresponding SDK methods locally.
+
+Compatibility:
+
+| SDK | Host | Behavior |
+| --- | --- | --- |
+| 0.1.x | 0.1.x host | Existing Solana wallet and wire protocol. |
+| 0.1.x | Multichain host | Existing Solana wire calls remain valid; additive capabilities and fields are ignored. |
+| Multichain prerelease | 0.1.x host | Legacy Solana calls work; new methods reject locally when capabilities are absent. |
+| Multichain prerelease | Multichain host | Use only advertised capabilities; an advertised API can still report an unavailable route. |
+
+Fullscreen identity is the launch token subject. Inline identity and payer come
+from the viewer's `host.init` context; the shared message author's token is not
+viewer identity. `user.publicKey` remains the legacy subject, while
+`wallet.publicKey` is a Solana payer or `null`. Chain-qualified accounts are
+available only through `accounts.list()` when the host grants access.
+
+For a host advertising `trading-v1`, a preview request looks like:
+
+```ts
+const review = await app.trade.preview({
+  kind: 'swap',
+  input: { chainId: 'eip155:8453', address: 'native' },
+  output: { chainId: 'eip155:8453', address: '0xTokenAddress' },
+  account: { chainId: 'eip155:8453', address: '0xPayerAddress' },
+  amount: '1000000000000000', // base units, never a floating-point value
+  slippageBps: 50,
+});
+// review contains reviewId, expiresAt, input/output/account, exact inputAmount,
+// outputAmount and minOutputAmount, provider, fees, nativeBudget and constraints.
+const operation = await app.trade.request({ reviewId: review.reviewId, idempotencyKey: 'a-stable-request-key' });
+// An operation ID identifies the request, not settlement; poll app.trade.get(operation.operationId).
+```
+
+The example addresses are placeholders: obtain actual asset and account IDs
+from discovery. A host may reject unsupported methods, signers, routes or an
+expired review; handle `BridgeError.code` rather than assuming execution.
+Operation stages are open strings so newer hosts can add states. This SDK is a
+prerelease contract; `trading-v1` must not be advertised until the host can
+perform the requested flow. Host operation data and signing credentials do not
+belong in the iframe.
+
+The current server draft names these stages: `unknown`, `needs_review`,
+`awaiting_signature`, `executing`, `deposit_seen`, `settled`, `failed`,
+`refunded`, and `incomplete`. The contract keeps `stage` open for future
+additions. Draft errors include `LAUNCH_TOKEN_REQUIRED`,
+`INVALID_TRADING_CONTEXT`, `TRADING_PERMISSION_DENIED`, `UNSUPPORTED_CHAIN`,
+`UNSUPPORTED_SIGNER`, `ROUTE_NOT_IMPLEMENTED`, `INVALID_ROUTE_KIND`,
+`REVIEW_EXPIRED`, `REVIEW_ALREADY_USED`, and `IDEMPOTENCY_CONFLICT`; underlying
+rails may add others. Server execution and host signing remain in development.
