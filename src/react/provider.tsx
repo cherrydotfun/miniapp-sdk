@@ -68,6 +68,7 @@ export function CherryMiniAppProvider({
     app
       .init()
       .then(() => {
+        if (appRef.current !== app) return;
         setUser(app.user);
         setRoom(app.room);
         setLaunchToken(app.launchToken);
@@ -76,12 +77,13 @@ export function CherryMiniAppProvider({
         setIsReady(true);
       })
       .catch((err: unknown) => {
+        if (appRef.current !== app) return;
         setError(err instanceof Error ? err : new Error(String(err)));
       });
 
     return () => {
       app.destroy();
-      appRef.current = null;
+      if (appRef.current === app) appRef.current = null;
     };
   // initTimeout is intentionally not in deps — only used at construction time
   // eslint-disable-next-line react-hooks/exhaustive-deps
