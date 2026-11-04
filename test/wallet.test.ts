@@ -507,7 +507,7 @@ describe('trading bridge', () => {
   test('sends exact base units and stable idempotency key, receives operation id before settlement', async () => {
     const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
     const preview = { kind: 'swap' as const, input: { chainId: 'eip155:8453', address: 'native' }, output: { chainId: 'eip155:8453', address: '0xtoken' }, amount: '123456789012345678901', slippageBps: 50, account: { chainId: 'eip155:8453', address: '0xabc' } };
-    host.answerNext('trade.preview', { result: { reviewId: 'r1', inputAmount: preview.amount, outputAmount: '77', minOutputAmount: '75', provider: 'p', expiresAt: '2027-01-01T00:00:00Z', inputSymbol: 'ETH', outputSymbol: 'T', inputDecimals: 18, outputDecimals: 6, input: preview.input, output: preview.output, account: preview.account, fees: [], nativeBudget: null, constraints: { kind: preview.kind, slippageBps: preview.slippageBps } } });
+    host.answerNext('trade.preview', { result: { reviewId: 'r1', inputAmount: preview.amount, outputAmount: '77', minOutputAmount: '75', provider: 'p', expiresAt: '2027-01-01T00:00:00Z', destinationOwner: 'payer', inputSymbol: 'ETH', outputSymbol: 'T', inputDecimals: 18, outputDecimals: 6, input: preview.input, output: preview.output, account: preview.account, fees: [], nativeBudget: null, constraints: { kind: preview.kind, slippageBps: preview.slippageBps } } });
     host.answerNext('trade.request', { result: { operationId: 'op1', stage: 'created' } });
     host.answerNext('trade.request', { result: { operationId: 'op1', stage: 'created' } });
     expect((await app.trade.preview(preview)).reviewId).toBe('r1');
@@ -560,7 +560,7 @@ test('trade preview refuses a valid-looking quote for a different account', asyn
   const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
   const input = { chainId: 'eip155:1', address: 'native' }, output = { chainId: 'eip155:1', address: 'token' }, account = { chainId: 'eip155:1', address: 'payer' };
   const preview = { kind: 'swap' as const, input, output, account, amount: '10', slippageBps: 50 };
-  host.answerNext('trade.preview', { result: { reviewId: 'r', inputAmount: '10', outputAmount: '9', minOutputAmount: '8', provider: 'p', expiresAt: '2027-01-01', inputSymbol: 'ETH', outputSymbol: 'T', inputDecimals: 18, outputDecimals: 6, input, output, account: { ...account, address: 'other' }, fees: [], nativeBudget: null, constraints: { kind: 'swap', slippageBps: 50 } } });
+  host.answerNext('trade.preview', { result: { reviewId: 'r', inputAmount: '10', outputAmount: '9', minOutputAmount: '8', provider: 'p', expiresAt: '2027-01-01', destinationOwner: 'payer', inputSymbol: 'ETH', outputSymbol: 'T', inputDecimals: 18, outputDecimals: 6, input, output, account: { ...account, address: 'other' }, fees: [], nativeBudget: null, constraints: { kind: 'swap', slippageBps: 50 } } });
   await expect(app.trade.preview(preview)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
 });
 
