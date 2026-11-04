@@ -588,6 +588,14 @@ test('operation history keeps public trade details and strips private nested fie
   expect((await app.trade.list()).operations[0]).toEqual({ operationId: 'op', stage: 'settled', kind: 'swap', createdAt: '2026-01-01T00:00:00Z', input: { chainId: 'eip155:1', address: 'native' }, output: { chainId: 'eip155:1', address: 'token' }, inputAmount: '100', outputAmount: '80' });
 });
 
+test('manual recovery status is public but cannot contain arbitrary values', async () => {
+  const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
+  host.answerNext('trade.get', { result: { operationId: 'op', stage: 'unknown', recoveryReview: 'manual_review', intent: { secret: true } } });
+  expect(await app.trade.get('op')).toEqual({ operationId: 'op', stage: 'unknown', recoveryReview: 'manual_review' });
+  host.answerNext('trade.get', { result: { operationId: 'op', stage: 'unknown', recoveryReview: 'automatic' } });
+  await expect(app.trade.get('op')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
+
 test('capabilities validate provider corridors without inventing them', async () => {
   const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
   const result = { version: 1, chains: [], providers: [{ id: 'p', enabled: true, corridors: [{ originChainId: 'eip155:1', destChainId: 'eip155:8453' }] }] };

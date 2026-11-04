@@ -398,6 +398,7 @@ export interface TradeNativeBudget {
 }
 export interface TradeOperation {
   operationId: string; stage: string; createdAt?: string;
+  recoveryReview?: 'manual_review';
   kind?: TradePreviewRequest['kind']; input?: TradeAssetId; output?: TradeAssetId;
   inputAmount?: string; outputAmount?: string;
 }
