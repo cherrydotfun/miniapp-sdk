@@ -379,6 +379,7 @@ export interface TradePreviewRequest {
   amount: string; slippageBps: number; account: TradeAccountRef; provider?: string;
 }
 export interface TradePreview {
+  budgetPolicy?: TradeBudgetPolicy;
   reviewId: string; inputAmount: string; outputAmount: string; minOutputAmount: string;
   provider: string; expiresAt: string;
   inputSymbol: string; inputDecimals: number; outputSymbol: string; outputDecimals: number;
