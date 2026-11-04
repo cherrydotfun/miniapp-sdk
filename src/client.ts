@@ -59,7 +59,8 @@ export interface CherryMiniAppOptions {
 }
 
 export class CherryMiniApp {
-  private readonly bridge: Bridge;
+  private bridge: Bridge;
+  private bridgeDestroyed = false;
   private readonly eventListeners = new Map<string, Set<EventListener>>();
   private removeHostListener: (() => void) | null = null;
   private _isReady = false;
@@ -123,7 +124,7 @@ export class CherryMiniApp {
       this.requireCapability('accounts-v1');
       const result = await this.bridge.request('wallet.accounts', {});
       const accounts = (result as { accounts?: unknown })?.accounts;
-      if (!Array.isArray(accounts) || !accounts.every(isCherryAccount)) {
+      if (!Array.isArray(accounts) || accounts.length > 1000 || !accounts.every(isCherryAccount)) {
         throw new BridgeError('Invalid wallet.accounts response', 'INVALID_RESPONSE');
       }
       return accounts.map((account) => ({ ...account, capabilities: [...account.capabilities] }));
@@ -194,6 +195,10 @@ export class CherryMiniApp {
 
   async init(): Promise<void> {
     if (this._isReady) return;
+    if (this.bridgeDestroyed) {
+      this.bridge = getSharedBridge();
+      this.bridgeDestroyed = false;
+    }
 
     // Inline blink bootstrap. The inline host (a chat-bubble card) does NOT
     // push `cherry:init`; it answers a `host.init` request and supplies the
@@ -641,7 +646,9 @@ export class CherryMiniApp {
     this.eventListeners.clear();
     this._isReady = false;
     this._blink = null;
+    this._hostCapabilities = [];
     destroySharedBridge();
+    this.bridgeDestroyed = true;
   }
 
   // ---- private helpers ----

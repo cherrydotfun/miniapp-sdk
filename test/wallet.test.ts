@@ -623,3 +623,24 @@ test('capability metadata preserves disabled reasons and validates explorer link
   host.answerNext('trade.capabilities',{result:{version:1,chains:[{...chain,explorerUrl:'javascript:bad'}],providers:[]}});
   await expect(app.trade.capabilities()).rejects.toMatchObject({code:'INVALID_RESPONSE'});
 });
+
+test('destroy clears host capabilities and a new legacy session cannot use new methods', async () => {
+  const { app } = await fullscreen({}, { capabilities:['accounts-v1','trading-v1'] });
+  expect(app.hostCapabilities).toEqual(['accounts-v1','trading-v1']);
+  app.destroy();
+  expect(app.hostCapabilities).toEqual([]);
+  uninstallHost();
+  const legacyHost = installHost();
+  const ready = app.init();
+  legacyHost.post({ type:'cherry:init', version:2, token:unsignedJwt(LEGACY_EMBED_CLAIMS) });
+  await ready;
+  expect(app.hostCapabilities).toEqual([]);
+  await expect(app.accounts.list()).rejects.toMatchObject({code:'METHOD_NOT_SUPPORTED'});
+  expect(legacyHost.requests('wallet.accounts')).toHaveLength(0);
+  app.destroy();
+  uninstallHost();
+  const old = await fullscreen();
+  expect(old.app.hostCapabilities).toEqual([]);
+  await expect(old.app.accounts.list()).rejects.toMatchObject({code:'METHOD_NOT_SUPPORTED'});
+  expect(old.host.requests('wallet.accounts')).toHaveLength(0);
+});
