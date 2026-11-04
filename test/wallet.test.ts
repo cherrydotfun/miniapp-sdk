@@ -676,3 +676,34 @@ test('destroy clears host capabilities and a new legacy session cannot use new m
   await expect(old.app.accounts.list()).rejects.toMatchObject({code:'METHOD_NOT_SUPPORTED'});
   expect(old.host.requests('wallet.accounts')).toHaveLength(0);
 });
+
+test.each(['buffered', 'delivered'])('destroy fences %s fullscreen init before continuation and allows legacy reinit', async (mode) => {
+  const host = installHost();
+  const app = new CherryMiniApp();
+  const token = unsignedJwt(LEGACY_EMBED_CLAIMS);
+  const message = { type:'cherry:init', version:2, token, capabilities:['trading-v1'] };
+  if (mode === 'buffered') host.post(message);
+  const pending = app.init();
+  if (mode === 'delivered') host.post(message);
+  app.destroy();
+  await expect(pending).rejects.toMatchObject({ code:'DESTROYED' });
+  expect(app.isReady).toBe(false); expect(app.hostCapabilities).toEqual([]);
+  expect(host.sent.filter(row => row.message['type'] === 'cherry:ready')).toHaveLength(0);
+  const next = app.init(); host.post({ type:'cherry:init', version:2, token }); await next;
+  expect(app.hostCapabilities).toEqual([]);
+  expect(host.sent.filter(row => row.message['type'] === 'cherry:ready')).toHaveLength(1);
+});
+
+test('destroy cancels an outstanding init wait without waiting for its timeout', async () => {
+  installHost(); const app = new CherryMiniApp({ initTimeout:60_000 }); const pending = app.init();
+  app.destroy(); await expect(pending).rejects.toMatchObject({ code:'DESTROYED' });
+});
+
+test('destroy fences a resolved inline host.init before continuation', async () => {
+  const host = installHost({ transport:'iframe', hash:'mode=inline' });
+  host.answerNext('host.init', { result:{ viewerWallet:SUB, capabilities:['trading-v1'] } });
+  const app = new CherryMiniApp(); const pending = app.init();
+  await Promise.resolve(); app.destroy();
+  await expect(pending).rejects.toMatchObject({ code:'DESTROYED' });
+  expect(app.isReady).toBe(false); expect(app.hostCapabilities).toEqual([]); expect(app.blink).toBeNull();
+});

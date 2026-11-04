@@ -61,6 +61,8 @@ export interface CherryMiniAppOptions {
 export class CherryMiniApp {
   private bridge: Bridge;
   private bridgeDestroyed = false;
+  private initGeneration = 0;
+  private cancelPendingInit: (() => void) | null = null;
   private readonly eventListeners = new Map<string, Set<EventListener>>();
   private removeHostListener: (() => void) | null = null;
   private _isReady = false;
@@ -195,6 +197,8 @@ export class CherryMiniApp {
 
   async init(): Promise<void> {
     if (this._isReady) return;
+    this.cancelPendingInit?.();
+    const generation = ++this.initGeneration;
     if (this.bridgeDestroyed) {
       this.bridge = getSharedBridge();
       this.bridgeDestroyed = false;
@@ -210,11 +214,12 @@ export class CherryMiniApp {
       // `preview` is a non-interactive render shown in the share picker before
       // the message exists — same bootstrap as inline, but read-only and
       // without a real messageId/room.
-      await this.initInline(mode === 'preview');
+      await this.initInline(mode === 'preview', generation);
       return;
     }
 
     const initMessage = await this.waitForInit();
+    this.assertInitGeneration(generation);
 
     // Decode JWT without verification (verification is server-side)
     const payload = decodeJwt(initMessage.token) as unknown as LaunchTokenPayload;
@@ -264,7 +269,7 @@ export class CherryMiniApp {
    * host, not the token). The blink's `params`/`messageId`/`route` are also
    * available on the host.init response and via the launch token claims.
    */
-  private async initInline(isPreview = false): Promise<void> {
+  private async initInline(isPreview: boolean, generation: number): Promise<void> {
     const token = readLaunchParam('token');
 
     let ctx: Record<string, unknown> = {};
@@ -277,6 +282,7 @@ export class CherryMiniApp {
       // Host didn't answer host.init — leave ctx empty; we still expose
       // whatever the token carries so the app can render in a degraded state.
     }
+    this.assertInitGeneration(generation);
 
     // `viewerWallet` is the viewer's identity; CherryID-aware hosts add the
     // payer separately (`viewerPaymentWallet` / `viewerPaymentWalletKind`) and
@@ -408,21 +414,31 @@ export class CherryMiniApp {
     }
 
     return new Promise<BridgeInitMessage>((resolve, reject) => {
+      const bridge = this.bridge;
       const timer = setTimeout(() => {
         cleanup();
+        if (this.cancelPendingInit === cancel) this.cancelPendingInit = null;
         reject(new Error(`cherry:init not received within ${this.initTimeout}ms`));
       }, this.initTimeout);
 
-      const cleanup = this.bridge.startListening((message: BridgeMessage) => {
+      const cancel = () => {
+        clearTimeout(timer);
+        cleanup();
+        if (this.cancelPendingInit === cancel) this.cancelPendingInit = null;
+        reject(new BridgeError('Initialization cancelled', 'DESTROYED'));
+      };
+      const cleanup = bridge.startListening((message: BridgeMessage) => {
         if (message['type'] === 'cherry:init') {
           clearTimeout(timer);
           cleanup();
+          if (this.cancelPendingInit === cancel) this.cancelPendingInit = null;
           // The bridge also buffered this message; drop that copy so it can't
           // be replayed to a later init().
-          this.bridge.consumeBufferedInit();
+          bridge.consumeBufferedInit();
           resolve(message as unknown as BridgeInitMessage);
         }
       });
+      this.cancelPendingInit = cancel;
     });
   }
 
@@ -641,6 +657,8 @@ export class CherryMiniApp {
   // ---- cleanup ----
 
   destroy(): void {
+    this.initGeneration++;
+    this.cancelPendingInit?.();
     this.removeHostListener?.();
     this.removeHostListener = null;
     this.eventListeners.clear();
@@ -652,6 +670,10 @@ export class CherryMiniApp {
   }
 
   // ---- private helpers ----
+
+  private assertInitGeneration(generation: number): void {
+    if (generation !== this.initGeneration) throw new BridgeError('Initialization cancelled', 'DESTROYED');
+  }
 
   private assertReady(): void {
     if (!this._isReady) {
