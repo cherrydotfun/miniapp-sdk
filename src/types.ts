@@ -394,10 +394,17 @@ export interface TradeNativeBudget {
   minimumRequired: string; totalRequired?: string; balance?: string; shortfall?: string;
   complete: boolean; estimated: boolean; quotedAt: string; simulationChecked?: boolean; canPay?: boolean;
 }
-export interface TradeOperation { operationId: string; stage: string }
+export interface TradeOperation {
+  operationId: string; stage: string; createdAt?: string;
+  kind?: TradePreviewRequest['kind']; input?: TradeAssetId; output?: TradeAssetId;
+  inputAmount?: string; outputAmount?: string;
+}
 export interface TradeCapabilities {
-  version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean; active?: boolean; routeAvailable?: boolean }>;
+  version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean; active?: boolean; routeAvailable?: boolean; displayName?: string; nativeSymbol?: string; iconUrl?: string }>;
   providers: Array<{ id: string; enabled: boolean }>;
 }
-export interface TradeAsset extends TradeAssetId { symbol: string; decimals: number }
+export interface TradeAsset extends TradeAssetId {
+  symbol: string; decimals: number; name?: string; iconUrl?: string;
+  usdPrice?: number; priceChange24h?: number; marketCap?: number; liquidity?: number;
+}
 export interface TradeHolding extends TradeAssetId { amount: string }

@@ -572,3 +572,18 @@ test('operation envelopes do not expose host execution payloads', async () => {
   expect(await app.trade.get('op')).toEqual({ operationId: 'op', stage: 'pending' });
   expect(await app.trade.list()).toEqual({ operations: [{ operationId: 'op', stage: 'pending' }] });
 });
+
+test('asset discovery preserves valid optional market data and rejects unsafe metadata', async () => {
+  const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
+  const asset = { chainId: 'eip155:8453', address: 'native', symbol: 'ETH', decimals: 18, name: 'Ether', iconUrl: 'https://cdn.example/eth.png', usdPrice: 2500, priceChange24h: -2.5 };
+  host.answerNext('trade.assets', { result: { assets: [asset] } });
+  expect(await app.trade.assets({ q: 'eth' })).toEqual({ assets: [asset] });
+  host.answerNext('trade.assets', { result: { assets: [{ ...asset, iconUrl: 'javascript:alert(1)' }] } });
+  await expect(app.trade.assets()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
+
+test('operation history keeps public trade details and strips private nested fields', async () => {
+  const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
+  host.answerNext('trade.list', { result: { operations: [{ operationId: 'op', stage: 'settled', kind: 'swap', createdAt: '2026-01-01T00:00:00Z', input: { chainId: 'eip155:1', address: 'native', private: 'no' }, output: { chainId: 'eip155:1', address: 'token' }, inputAmount: '100', outputAmount: '80', intent: { tx: 'secret' } }] } });
+  expect((await app.trade.list()).operations[0]).toEqual({ operationId: 'op', stage: 'settled', kind: 'swap', createdAt: '2026-01-01T00:00:00Z', input: { chainId: 'eip155:1', address: 'native' }, output: { chainId: 'eip155:1', address: 'token' }, inputAmount: '100', outputAmount: '80' });
+});

@@ -151,11 +151,11 @@ export class CherryMiniApp {
       // part of the app-facing operation envelope.
       if (method === 'request' || method === 'get' || method === 'resume') {
         const operation = result as TradeOperation;
-        return { operationId: operation.operationId, stage: operation.stage } as T;
+        return publicTradeOperation(operation) as T;
       }
       if (method === 'list') {
         const list = result as { operations: TradeOperation[] };
-        return { operations: list.operations.map(({ operationId, stage }) => ({ operationId, stage })) } as T;
+        return { operations: list.operations.map(publicTradeOperation) } as T;
       }
       return result as T;
     };
@@ -790,7 +790,10 @@ function validTradeResponse(method: string, value: unknown): boolean {
   const str = (x: unknown) => typeof x === 'string' && x.length > 0 && x.length <= 4096;
   const atomic = (x: unknown) => typeof x === 'string' && /^(0|[1-9][0-9]*)$/.test(x) && x.length <= 256;
   const assetId = (x: Record<string, unknown>) => str(x['chainId']) && str(x['address']);
-  const operation = (x: unknown) => object(x) && str(x['operationId']) && str(x['stage']);
+  const operation = (x: unknown) => object(x) && str(x['operationId']) && str(x['stage']) && (x['createdAt'] === undefined || (str(x['createdAt']) && Number.isFinite(Date.parse(x['createdAt'] as string)))) && (x['kind'] === undefined || ['buy','swap','cross-chain'].includes(String(x['kind']))) && (x['input'] === undefined || (object(x['input']) && assetId(x['input']))) && (x['output'] === undefined || (object(x['output']) && assetId(x['output']))) && (x['inputAmount'] === undefined || atomic(x['inputAmount'])) && (x['outputAmount'] === undefined || atomic(x['outputAmount']));
+  const optionalString = (x: unknown) => x === undefined || str(x);
+  const optionalUrl = (x: unknown) => { if (x === undefined) return true; if (typeof x !== 'string' || x.length > 4096) return false; try { return new URL(x).protocol === 'https:'; } catch { return false; } };
+  const optionalFinite = (x: unknown) => x === undefined || (typeof x === 'number' && Number.isFinite(x));
   const optionalNumber = (x: unknown) => x === undefined || (typeof x === 'number' && Number.isInteger(x) && x >= 0);
   const fee = (x: unknown) => object(x) && str(x['label']) && optionalNumber(x['bps']) && (x['amount'] === undefined || atomic(x['amount'])) && (x['note'] === undefined || str(x['note']));
   const budget = (x: unknown) => x === null || (object(x) && str(x['chainId']) && str(x['payer']) && str(x['nativeSymbol']) && typeof x['nativeDecimals'] === 'number' && Number.isInteger(x['nativeDecimals']) && x['nativeDecimals'] >= 0 && x['nativeDecimals'] <= 255 && (x['inputToken'] === 'native' || (object(x['inputToken']) && str(x['inputToken']['contract']))) && str(x['rail']) && optionalNumber(x['slippageBps']) && ['inputAmount', 'sourceNativeAmount', 'minimumRequired'].every(k => atomic(x[k])) && ['networkFee', 'accountRent', 'routeFee', 'approvalFee', 'otherNative', 'totalRequired', 'balance', 'shortfall'].every(k => x[k] === undefined || atomic(x[k])) && typeof x['complete'] === 'boolean' && typeof x['estimated'] === 'boolean' && str(x['quotedAt']) && ['simulationChecked', 'canPay'].every(k => x[k] === undefined || typeof x[k] === 'boolean'));
@@ -799,9 +802,21 @@ function validTradeResponse(method: string, value: unknown): boolean {
     case 'preview': return str(value['reviewId']) && atomic(value['inputAmount']) && atomic(value['outputAmount']) && atomic(value['minOutputAmount']) && str(value['provider']) && str(value['expiresAt']) && Number.isFinite(Date.parse(value['expiresAt'] as string)) && object(value['input']) && assetId(value['input']) && object(value['output']) && assetId(value['output']) && object(value['account']) && assetId(value['account']) && Array.isArray(value['fees']) && value['fees'].length <= 100 && value['fees'].every(fee) && budget(value['nativeBudget']) && object(value['constraints']) && ['buy', 'swap', 'cross-chain'].includes(String(value['constraints']['kind'])) && typeof value['constraints']['slippageBps'] === 'number' && Number.isInteger(value['constraints']['slippageBps']) && value['constraints']['slippageBps'] >= 0 && value['constraints']['slippageBps'] <= 10000;
     case 'request': case 'get': case 'resume': return operation(value);
     case 'list': return Array.isArray(value['operations']) && value['operations'].length <= 1000 && value['operations'].every(operation);
-    case 'assets': return Array.isArray(value['assets']) && value['assets'].length <= 10000 && value['assets'].every((a: unknown) => object(a) && assetId(a) && str(a['symbol']) && Number.isInteger(a['decimals']) && (a['decimals'] as number) >= 0 && (a['decimals'] as number) <= 255);
+    case 'assets': return Array.isArray(value['assets']) && value['assets'].length <= 10000 && value['assets'].every((a: unknown) => object(a) && assetId(a) && str(a['symbol']) && Number.isInteger(a['decimals']) && (a['decimals'] as number) >= 0 && (a['decimals'] as number) <= 255 && optionalString(a['name']) && optionalUrl(a['iconUrl']) && ['usdPrice','priceChange24h','marketCap','liquidity'].every(k => optionalFinite(a[k])));
     case 'holdings': return (value['unavailableChains'] === undefined || (Array.isArray(value['unavailableChains']) && value['unavailableChains'].length <= 1000 && value['unavailableChains'].every(str))) && Array.isArray(value['holdings']) && value['holdings'].length <= 10000 && value['holdings'].every((a: unknown) => object(a) && assetId(a) && atomic(a['amount']));
-    case 'capabilities': return value['version'] === 1 && Array.isArray(value['chains']) && value['chains'].length <= 1000 && value['chains'].every((c: unknown) => object(c) && str(c['chainId']) && ['enabled','assets','holdings','trade'].every(k => typeof c[k] === 'boolean')) && Array.isArray(value['providers']) && value['providers'].length <= 1000 && value['providers'].every((p: unknown) => object(p) && str(p['id']) && typeof p['enabled'] === 'boolean');
+    case 'capabilities': return value['version'] === 1 && Array.isArray(value['chains']) && value['chains'].length <= 1000 && value['chains'].every((c: unknown) => object(c) && str(c['chainId']) && ['enabled','assets','holdings','trade'].every(k => typeof c[k] === 'boolean') && optionalString(c['displayName']) && optionalString(c['nativeSymbol']) && optionalUrl(c['iconUrl'])) && Array.isArray(value['providers']) && value['providers'].length <= 1000 && value['providers'].every((p: unknown) => object(p) && str(p['id']) && typeof p['enabled'] === 'boolean');
     default: return false;
   }
+}
+
+function publicTradeOperation(operation: TradeOperation): TradeOperation {
+  return {
+    operationId: operation.operationId, stage: operation.stage,
+    ...(operation.createdAt !== undefined ? { createdAt: operation.createdAt } : {}),
+    ...(operation.kind !== undefined ? { kind: operation.kind } : {}),
+    ...(operation.input !== undefined ? { input: { chainId: operation.input.chainId, address: operation.input.address } } : {}),
+    ...(operation.output !== undefined ? { output: { chainId: operation.output.chainId, address: operation.output.address } } : {}),
+    ...(operation.inputAmount !== undefined ? { inputAmount: operation.inputAmount } : {}),
+    ...(operation.outputAmount !== undefined ? { outputAmount: operation.outputAmount } : {}),
+  };
 }
