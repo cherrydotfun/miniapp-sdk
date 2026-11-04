@@ -151,8 +151,8 @@ export class CherryMiniApp {
     };
     return {
       capabilities: () => call<TradeCapabilities>('capabilities'),
-      assets: () => call<{ assets: TradeAsset[] }>('assets'),
-      holdings: () => call<{ holdings: TradeHolding[] }>('holdings'),
+      assets: (filter: { q?: string; chainId?: string; limit?: number } = {}) => call<{ assets: TradeAsset[] }>('assets', { ...filter }),
+      holdings: () => call<{ holdings: TradeHolding[]; unavailableChains?: string[] }>('holdings'),
       preview: (request: TradePreviewRequest) => {
         if (!/^(0|[1-9][0-9]*)$/.test(request.amount)) return Promise.reject(new BridgeError('amount must be a base-unit integer string', 'INVALID_ARGUMENT'));
         return call<TradePreview>('preview', { ...request });
@@ -782,7 +782,7 @@ function validTradeResponse(method: string, value: unknown): boolean {
     case 'request': case 'get': case 'resume': return operation(value);
     case 'list': return Array.isArray(value['operations']) && value['operations'].length <= 1000 && value['operations'].every(operation);
     case 'assets': return Array.isArray(value['assets']) && value['assets'].length <= 10000 && value['assets'].every((a: unknown) => object(a) && assetId(a) && str(a['symbol']) && Number.isInteger(a['decimals']) && (a['decimals'] as number) >= 0 && (a['decimals'] as number) <= 255);
-    case 'holdings': return Array.isArray(value['holdings']) && value['holdings'].length <= 10000 && value['holdings'].every((a: unknown) => object(a) && assetId(a) && atomic(a['amount']));
+    case 'holdings': return (value['unavailableChains'] === undefined || (Array.isArray(value['unavailableChains']) && value['unavailableChains'].length <= 1000 && value['unavailableChains'].every(str))) && Array.isArray(value['holdings']) && value['holdings'].length <= 10000 && value['holdings'].every((a: unknown) => object(a) && assetId(a) && atomic(a['amount']));
     case 'capabilities': return value['version'] === 1 && Array.isArray(value['chains']) && value['chains'].length <= 1000 && value['chains'].every((c: unknown) => object(c) && str(c['chainId']) && ['enabled','assets','holdings','trade'].every(k => typeof c[k] === 'boolean')) && Array.isArray(value['providers']) && value['providers'].length <= 1000 && value['providers'].every((p: unknown) => object(p) && str(p['id']) && typeof p['enabled'] === 'boolean');
     default: return false;
   }

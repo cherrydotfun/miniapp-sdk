@@ -384,7 +384,7 @@ export interface TradePreview {
 }
 export interface TradeOperation { operationId: string; stage: string }
 export interface TradeCapabilities {
-  version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean }>;
+  version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean; active?: boolean; routeAvailable?: boolean }>;
   providers: Array<{ id: string; enabled: boolean }>;
 }
 export interface TradeAsset extends TradeAssetId { symbol: string; decimals: number }
