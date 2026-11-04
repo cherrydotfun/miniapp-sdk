@@ -407,4 +407,4 @@ export interface TradeAsset extends TradeAssetId {
   symbol: string; decimals: number; name?: string; iconUrl?: string;
   usdPrice?: number; priceChange24h?: number; marketCap?: number; liquidity?: number;
 }
-export interface TradeHolding extends TradeAssetId { amount: string }
+export interface TradeHolding extends TradeAssetId { amount: string; account?: TradeAccountRef }
