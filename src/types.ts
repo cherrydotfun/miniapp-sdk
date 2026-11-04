@@ -401,7 +401,7 @@ export interface TradeOperation {
 }
 export interface TradeCapabilities {
   version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean; active?: boolean; routeAvailable?: boolean; displayName?: string; nativeSymbol?: string; iconUrl?: string }>;
-  providers: Array<{ id: string; enabled: boolean }>;
+  providers: Array<{ id: string; enabled: boolean; corridors?: Array<{ originChainId: string; destChainId: string }> }>;
 }
 export interface TradeAsset extends TradeAssetId {
   symbol: string; decimals: number; name?: string; iconUrl?: string;

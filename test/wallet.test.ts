@@ -587,3 +587,12 @@ test('operation history keeps public trade details and strips private nested fie
   host.answerNext('trade.list', { result: { operations: [{ operationId: 'op', stage: 'settled', kind: 'swap', createdAt: '2026-01-01T00:00:00Z', input: { chainId: 'eip155:1', address: 'native', private: 'no' }, output: { chainId: 'eip155:1', address: 'token' }, inputAmount: '100', outputAmount: '80', intent: { tx: 'secret' } }] } });
   expect((await app.trade.list()).operations[0]).toEqual({ operationId: 'op', stage: 'settled', kind: 'swap', createdAt: '2026-01-01T00:00:00Z', input: { chainId: 'eip155:1', address: 'native' }, output: { chainId: 'eip155:1', address: 'token' }, inputAmount: '100', outputAmount: '80' });
 });
+
+test('capabilities validate provider corridors without inventing them', async () => {
+  const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
+  const result = { version: 1, chains: [], providers: [{ id: 'p', enabled: true, corridors: [{ originChainId: 'eip155:1', destChainId: 'eip155:8453' }] }] };
+  host.answerNext('trade.capabilities', { result });
+  expect(await app.trade.capabilities()).toEqual(result);
+  host.answerNext('trade.capabilities', { result: { ...result, providers: [{ id: 'p', enabled: true, corridors: [{}] }] } });
+  await expect(app.trade.capabilities()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
