@@ -564,3 +564,8 @@ additions. Draft errors include `LAUNCH_TOKEN_REQUIRED`,
 `UNSUPPORTED_SIGNER`, `ROUTE_NOT_IMPLEMENTED`, `INVALID_ROUTE_KIND`,
 `REVIEW_EXPIRED`, `REVIEW_ALREADY_USED`, and `IDEMPOTENCY_CONFLICT`; underlying
 rails may add others. Server execution and host signing remain in development.
+
+For apps using the existing `payerAsSubject` / `asWallet` opt-in, the host may
+restart the iframe when the person changes payer and mint a new launch subject.
+Within one iframe `user.publicKey` remains the initial subject; CherryID, when
+provided, is the stable person identity across wallets and restarts.
