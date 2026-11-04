@@ -624,6 +624,14 @@ test('capability metadata preserves disabled reasons and validates explorer link
   await expect(app.trade.capabilities()).rejects.toMatchObject({code:'INVALID_RESPONSE'});
 });
 
+test('budget policy accepts only supported host-reviewed modes', async () => {
+  const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
+  host.answerNext('trade.capabilities', { result: { version: 1, chains: [], providers: [], budgetPolicy: 'reviewed-partial' } });
+  expect((await app.trade.capabilities()).budgetPolicy).toBe('reviewed-partial');
+  host.answerNext('trade.capabilities', { result: { version: 1, chains: [], providers: [], budgetPolicy: 'automatic' } });
+  await expect(app.trade.capabilities()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
+
 test('destroy clears host capabilities and a new legacy session cannot use new methods', async () => {
   const { app } = await fullscreen({}, { capabilities:['accounts-v1','trading-v1'] });
   expect(app.hostCapabilities).toEqual(['accounts-v1','trading-v1']);

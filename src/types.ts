@@ -402,6 +402,7 @@ export interface TradeOperation {
   inputAmount?: string; outputAmount?: string;
 }
 export interface TradeCapabilities {
+  budgetPolicy?: 'complete-required' | 'reviewed-partial';
   version: 1; chains: Array<{ chainId: string; enabled: boolean; assets: boolean; holdings: boolean; trade: boolean; active?: boolean; routeAvailable?: boolean; displayName?: string; nativeSymbol?: string; nativeDecimals?: number; iconUrl?: string; explorerUrl?: string; unavailableReason?: string }>;
   providers: Array<{ id: string; enabled: boolean; corridors?: Array<{ originChainId: string; destChainId: string }> }>;
 }
