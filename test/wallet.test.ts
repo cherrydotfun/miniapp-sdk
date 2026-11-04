@@ -614,3 +614,12 @@ test('viewer expand forwards bounded context only on a supporting host', async (
   await app.requestExpand({route:'/trade',params:{chainId:'eip155:8453'}});
   expect(host.requests('host.requestExpand')[0]?.['params']).toEqual({route:'/trade',params:{chainId:'eip155:8453'}});
 });
+
+test('capability metadata preserves disabled reasons and validates explorer links', async () => {
+  const { app, host } = await fullscreen({}, { capabilities:['trading-v1'] });
+  const chain = {chainId:'eip155:8453',enabled:true,active:false,assets:false,holdings:false,trade:false,displayName:'Base',nativeSymbol:'ETH',nativeDecimals:18,explorerUrl:'https://example.com/',unavailableReason:'rpc-unavailable'};
+  host.answerNext('trade.capabilities',{result:{version:1,chains:[chain],providers:[]}});
+  expect((await app.trade.capabilities()).chains[0]).toEqual(chain);
+  host.answerNext('trade.capabilities',{result:{version:1,chains:[{...chain,explorerUrl:'javascript:bad'}],providers:[]}});
+  await expect(app.trade.capabilities()).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+});
