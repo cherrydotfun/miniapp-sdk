@@ -381,6 +381,7 @@ export interface TradePreviewRequest {
 export interface TradePreview {
   reviewId: string; inputAmount: string; outputAmount: string; minOutputAmount: string;
   provider: string; expiresAt: string;
+  inputSymbol: string; inputDecimals: number; outputSymbol: string; outputDecimals: number;
   input: TradeAssetId; output: TradeAssetId; account: TradeAccountRef;
   fees: TradeFee[]; nativeBudget: TradeNativeBudget | null;
   constraints: { kind: TradePreviewRequest['kind']; slippageBps: number };

@@ -149,7 +149,7 @@ export class CherryMiniApp {
       if (!validTradeResponse(method, result)) throw new BridgeError(`Invalid trade.${method} response`, 'INVALID_RESPONSE');
       // Host execution data, prepared transactions and credentials are never
       // part of the app-facing operation envelope.
-      if (method === 'request' || method === 'get' || method === 'resume') {
+      if (method === 'request' || method === 'get' || method === 'resume' || method === 'lookup') {
         const operation = result as TradeOperation;
         return publicTradeOperation(operation) as T;
       }
@@ -178,6 +178,7 @@ export class CherryMiniApp {
       },
       get: (operationId: string) => call<TradeOperation>('get', { operationId }),
       list: () => call<{ operations: TradeOperation[] }>('list'),
+      lookup: (request: { reviewId: string; idempotencyKey: string }) => call<TradeOperation>('lookup', { ...request }),
       resume: (operationId: string) => call<TradeOperation>('resume', { operationId }),
     };
   }
@@ -799,8 +800,8 @@ function validTradeResponse(method: string, value: unknown): boolean {
   const budget = (x: unknown) => x === null || (object(x) && str(x['chainId']) && str(x['payer']) && str(x['nativeSymbol']) && typeof x['nativeDecimals'] === 'number' && Number.isInteger(x['nativeDecimals']) && x['nativeDecimals'] >= 0 && x['nativeDecimals'] <= 255 && (x['inputToken'] === 'native' || (object(x['inputToken']) && str(x['inputToken']['contract']))) && str(x['rail']) && optionalNumber(x['slippageBps']) && ['inputAmount', 'sourceNativeAmount', 'minimumRequired'].every(k => atomic(x[k])) && ['networkFee', 'accountRent', 'routeFee', 'approvalFee', 'otherNative', 'totalRequired', 'balance', 'shortfall'].every(k => x[k] === undefined || atomic(x[k])) && typeof x['complete'] === 'boolean' && typeof x['estimated'] === 'boolean' && str(x['quotedAt']) && ['simulationChecked', 'canPay'].every(k => x[k] === undefined || typeof x[k] === 'boolean'));
   if (!object(value)) return false;
   switch (method) {
-    case 'preview': return str(value['reviewId']) && atomic(value['inputAmount']) && atomic(value['outputAmount']) && atomic(value['minOutputAmount']) && str(value['provider']) && str(value['expiresAt']) && Number.isFinite(Date.parse(value['expiresAt'] as string)) && object(value['input']) && assetId(value['input']) && object(value['output']) && assetId(value['output']) && object(value['account']) && assetId(value['account']) && Array.isArray(value['fees']) && value['fees'].length <= 100 && value['fees'].every(fee) && budget(value['nativeBudget']) && object(value['constraints']) && ['buy', 'swap', 'cross-chain'].includes(String(value['constraints']['kind'])) && typeof value['constraints']['slippageBps'] === 'number' && Number.isInteger(value['constraints']['slippageBps']) && value['constraints']['slippageBps'] >= 0 && value['constraints']['slippageBps'] <= 10000;
-    case 'request': case 'get': case 'resume': return operation(value);
+    case 'preview': return str(value['inputSymbol']) && str(value['outputSymbol']) && typeof value['inputDecimals'] === 'number' && Number.isInteger(value['inputDecimals']) && value['inputDecimals'] >= 0 && value['inputDecimals'] <= 30 && typeof value['outputDecimals'] === 'number' && Number.isInteger(value['outputDecimals']) && value['outputDecimals'] >= 0 && value['outputDecimals'] <= 30 && str(value['reviewId']) && atomic(value['inputAmount']) && atomic(value['outputAmount']) && atomic(value['minOutputAmount']) && str(value['provider']) && str(value['expiresAt']) && Number.isFinite(Date.parse(value['expiresAt'] as string)) && object(value['input']) && assetId(value['input']) && object(value['output']) && assetId(value['output']) && object(value['account']) && assetId(value['account']) && Array.isArray(value['fees']) && value['fees'].length <= 100 && value['fees'].every(fee) && budget(value['nativeBudget']) && object(value['constraints']) && ['buy', 'swap', 'cross-chain'].includes(String(value['constraints']['kind'])) && typeof value['constraints']['slippageBps'] === 'number' && Number.isInteger(value['constraints']['slippageBps']) && value['constraints']['slippageBps'] >= 0 && value['constraints']['slippageBps'] <= 10000;
+    case 'request': case 'get': case 'resume': case 'lookup': return operation(value);
     case 'list': return Array.isArray(value['operations']) && value['operations'].length <= 1000 && value['operations'].every(operation);
     case 'assets': return Array.isArray(value['assets']) && value['assets'].length <= 10000 && value['assets'].every((a: unknown) => object(a) && assetId(a) && str(a['symbol']) && Number.isInteger(a['decimals']) && (a['decimals'] as number) >= 0 && (a['decimals'] as number) <= 255 && optionalString(a['name']) && optionalUrl(a['iconUrl']) && ['usdPrice','priceChange24h','marketCap','liquidity'].every(k => optionalFinite(a[k])));
     case 'holdings': return (value['unavailableChains'] === undefined || (Array.isArray(value['unavailableChains']) && value['unavailableChains'].length <= 1000 && value['unavailableChains'].every(str))) && Array.isArray(value['holdings']) && value['holdings'].length <= 10000 && value['holdings'].every((a: unknown) => object(a) && assetId(a) && atomic(a['amount']) && (a['account'] === undefined || (object(a['account']) && assetId(a['account']) && a['account']['chainId'] === a['chainId'])));
