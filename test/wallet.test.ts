@@ -563,3 +563,12 @@ test('trade preview refuses a valid-looking quote for a different account', asyn
   host.answerNext('trade.preview', { result: { reviewId: 'r', inputAmount: '10', outputAmount: '9', minOutputAmount: '8', provider: 'p', expiresAt: '2027-01-01', input, output, account: { ...account, address: 'other' }, fees: [], nativeBudget: null, constraints: { kind: 'swap', slippageBps: 50 } } });
   await expect(app.trade.preview(preview)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
 });
+
+test('operation envelopes do not expose host execution payloads', async () => {
+  const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
+  const operation = { operationId: 'op', stage: 'pending', intent: { tx: 'secret' }, token: 'private' };
+  host.answerNext('trade.get', { result: operation });
+  host.answerNext('trade.list', { result: { operations: [operation] } });
+  expect(await app.trade.get('op')).toEqual({ operationId: 'op', stage: 'pending' });
+  expect(await app.trade.list()).toEqual({ operations: [{ operationId: 'op', stage: 'pending' }] });
+});

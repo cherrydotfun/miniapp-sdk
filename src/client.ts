@@ -147,6 +147,16 @@ export class CherryMiniApp {
       this.requireCapability('trading-v1');
       const result = await this.bridge.request(`trade.${method}`, params);
       if (!validTradeResponse(method, result)) throw new BridgeError(`Invalid trade.${method} response`, 'INVALID_RESPONSE');
+      // Host execution data, prepared transactions and credentials are never
+      // part of the app-facing operation envelope.
+      if (method === 'request' || method === 'get' || method === 'resume') {
+        const operation = result as TradeOperation;
+        return { operationId: operation.operationId, stage: operation.stage } as T;
+      }
+      if (method === 'list') {
+        const list = result as { operations: TradeOperation[] };
+        return { operations: list.operations.map(({ operationId, stage }) => ({ operationId, stage })) } as T;
+      }
       return result as T;
     };
     return {
