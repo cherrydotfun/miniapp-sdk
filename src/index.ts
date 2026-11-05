@@ -27,7 +27,16 @@ export {
 export { detectPlatform, isInsideCherry, getCherryEnvironment, type DetectPlatformOptions } from './env';
 
 // Bridge transport (exposed for advanced usage)
-export { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';
+export {
+  Bridge,
+  BridgeError,
+  getSharedBridge,
+  destroySharedBridge,
+  isTrustedHostOrigin,
+  type BridgeOptions,
+  type BridgeTransport,
+} from './bridge';
+export { DEFAULT_TRUSTED_HOST_ORIGINS } from './constants';
 
 // Main client
 export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from './client';

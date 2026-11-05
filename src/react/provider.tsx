@@ -32,6 +32,7 @@ export function CherryMiniAppProvider({
   children,
   initTimeout,
   strict,
+  trustedOrigins,
 }: CherryMiniAppProviderProps): React.JSX.Element {
   const appRef = useRef<CherryMiniApp | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -44,6 +45,7 @@ export function CherryMiniAppProvider({
     const opts: import('../client').CherryMiniAppOptions = {};
     if (initTimeout !== undefined) opts.initTimeout = initTimeout;
     if (strict !== undefined) opts.strict = strict;
+    if (trustedOrigins !== undefined) opts.trustedOrigins = trustedOrigins;
     const app = new CherryMiniApp(opts);
     appRef.current = app;
 
@@ -63,7 +65,7 @@ export function CherryMiniAppProvider({
       app.destroy();
       appRef.current = null;
     };
-  // initTimeout is intentionally not in deps — only used at construction time
+  // Options are intentionally not in deps — only used at construction time
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

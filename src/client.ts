@@ -37,6 +37,12 @@ export interface CherryMiniAppOptions {
    * Default: `false`.
    */
   strict?: boolean;
+  /**
+   * Extra Cherry host origins to accept in iframe mode, on top of
+   * `https://chat.cherry.fun`, `https://cherry.fun` and `https://*.cherry.fun`
+   * (e.g. a staging host). Messages from any other origin are ignored.
+   */
+  trustedOrigins?: readonly string[];
 }
 
 export class CherryMiniApp {
@@ -52,7 +58,10 @@ export class CherryMiniApp {
   private readonly initTimeout: number;
 
   constructor(options: CherryMiniAppOptions = {}) {
-    this.bridge = getSharedBridge();
+    this.bridge = getSharedBridge({
+      ...(options.strict !== undefined ? { strict: options.strict } : {}),
+      ...(options.trustedOrigins !== undefined ? { trustedOrigins: options.trustedOrigins } : {}),
+    });
     this.initTimeout = options.initTimeout ?? 10_000;
   }
 
@@ -133,6 +142,13 @@ export class CherryMiniApp {
 
     // Subscribe to host events (suspended, resumed, walletDisconnected, etc.)
     this.removeHostListener = this.bridge.startListening((message: BridgeMessage) => {
+      if (message['type'] === 'cherry:init') {
+        // The host re-sends cherry:init until it sees cherry:ready. A repeat
+        // after we are ready means our ack was lost (e.g. the host's listener
+        // was not up yet): ack again, idempotently.
+        this.bridge.sendToHost(readyMsg);
+        return;
+      }
       if (message['type'] === 'cherry:event') {
         const evt = message as unknown as BridgeEvent;
         // Host events carry their payload under `payload` (e.g. blink:update);
@@ -273,7 +289,11 @@ export class CherryMiniApp {
     return new Promise<BridgeInitMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
-        reject(new Error(`cherry:init not received within ${this.initTimeout}ms`));
+        const ignored = this.bridge.ignoredOrigins;
+        const hint = ignored.length
+          ? ` (ignored messages from untrusted origin(s) ${ignored.join(', ')} — add them to \`trustedOrigins\` if they are Cherry hosts)`
+          : '';
+        reject(new Error(`cherry:init not received within ${this.initTimeout}ms${hint}`));
       }, this.initTimeout);
 
       const cleanup = this.bridge.startListening((message: BridgeMessage) => {

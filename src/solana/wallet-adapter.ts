@@ -10,8 +10,14 @@ import {
   type WalletName,
 } from '@solana/wallet-adapter-base';
 import { PublicKey, Transaction, VersionedTransaction, type Connection } from '@solana/web3.js';
-import { getSharedBridge } from '../bridge';
+import { getSharedBridge, type BridgeOptions } from '../bridge';
 import { isInsideCherry } from '../env';
+
+/**
+ * Options for {@link CherryWalletAdapter}. Only needed when the app talks to a
+ * Cherry host outside the default origins (staging) or wants strict detection.
+ */
+export type CherryWalletAdapterConfig = BridgeOptions;
 
 export const CherryWalletAdapterName = 'Cherry' as WalletName<'Cherry'>;
 
@@ -28,6 +34,13 @@ const CHERRY_ICON =
   );
 
 export class CherryWalletAdapter extends BaseWalletAdapter {
+  constructor(config: CherryWalletAdapterConfig = {}) {
+    super();
+    if (config.trustedOrigins !== undefined || config.strict !== undefined) {
+      getSharedBridge(config);
+    }
+  }
+
   readonly name = CherryWalletAdapterName;
   readonly url = 'https://cherry.fun';
   readonly icon = CHERRY_ICON;
