@@ -9,6 +9,7 @@ import type {
 const REQUEST_TIMEOUT_MS = 120_000;
 
 interface PendingRequest {
+  method: string;
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -19,6 +20,8 @@ type MessageHandler = (message: BridgeMessage) => void;
 export class Bridge {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly handlers: MessageHandler[] = [];
+  private trustedHostOrigin: string | null = null;
+  private trustedHostSource: MessageEventSource | null = null;
   private readonly listener: (event: MessageEvent) => void;
 
   /**
@@ -27,6 +30,7 @@ export class Bridge {
    * of timing out.
    */
   private _bufferedInit: BridgeMessage | null = null;
+  private _bufferedInitBinding: { origin:string; source:MessageEventSource } | null = null;
 
   constructor() {
     this.listener = (event: MessageEvent) => {
@@ -44,11 +48,26 @@ export class Bridge {
       if (!isObject(data) || typeof data['type'] !== 'string') return;
       const message = data as BridgeMessage;
 
+      const trustedParent = event.isTrusted === true && typeof window !== 'undefined' && window.parent !== window && event.source === window.parent && typeof event.origin === 'string' && /^https?:\/\//.test(event.origin);
+      // Only the new account hint is source-bound. Legacy wire behaviour stays unchanged.
+      if (message['type'] === 'cherry:event' && message['event'] === 'accounts.changed') {
+        if (!trustedParent || !this.trustedHostOrigin || event.source !== this.trustedHostSource || event.origin !== this.trustedHostOrigin) return;
+      }
+
       // Resolve pending request if this is a response
       if (message['type'] === 'cherry:response') {
         const response = message as unknown as BridgeResponse;
         const pending = this.pending.get(response.id);
         if (pending) {
+          // New account/trading responses can change recovery state, so only
+          // the bound iframe parent can settle them. Legacy responses retain
+          // their existing wire semantics.
+          const scoped = pending.method === 'wallet.accounts' || pending.method.startsWith('trade.');
+          if (scoped && detectPlatform() === 'iframe' && (!trustedParent || !this.trustedHostOrigin || event.source !== this.trustedHostSource || event.origin !== this.trustedHostOrigin)) return;
+          if (pending.method === 'host.init') {
+            this.trustedHostOrigin = trustedParent ? event.origin : null;
+            this.trustedHostSource = trustedParent ? event.source : null;
+          }
           this.pending.delete(response.id);
           clearTimeout(pending.timer);
           if (response.error) {
@@ -72,6 +91,7 @@ export class Bridge {
       // waitForInit() drops the copy when it takes the live message.
       if (message['type'] === 'cherry:init') {
         this._bufferedInit = message;
+        this._bufferedInitBinding = trustedParent && event.source ? { origin:event.origin, source:event.source } : null;
         if (this.handlers.length === 0) return;
       }
 
@@ -91,6 +111,8 @@ export class Bridge {
   consumeBufferedInit(): BridgeMessage | null {
     const msg = this._bufferedInit;
     this._bufferedInit = null;
+    if (msg) { this.trustedHostOrigin = this._bufferedInitBinding?.origin ?? null; this.trustedHostSource = this._bufferedInitBinding?.source ?? null; }
+    this._bufferedInitBinding = null;
     return msg;
   }
 
@@ -143,7 +165,7 @@ export class Bridge {
         reject(new BridgeError(`Request timed out: ${method}`, 'TIMEOUT'));
       }, REQUEST_TIMEOUT_MS);
 
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { method, resolve, reject, timer });
 
       const msg: BridgeRequest = {
         type: 'cherry:request',
@@ -163,6 +185,10 @@ export class Bridge {
       this.pending.delete(id);
     }
     this.handlers.length = 0;
+    this.trustedHostOrigin = null;
+    this.trustedHostSource = null;
+    this._bufferedInit = null;
+    this._bufferedInitBinding = null;
   }
 }
 

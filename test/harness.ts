@@ -49,8 +49,9 @@ export class FakeHost {
   }
 
   /** Deliver a message to the app as the host would (`window.postMessage` → `message` event). */
-  post(data: unknown): void {
-    for (const listener of [...this.listeners]) listener({ data });
+  post(data: unknown, meta: { source?: unknown; origin?: string; isTrusted?: boolean } = {}): void {
+    const win = g.window as { parent?: unknown } | undefined;
+    for (const listener of [...this.listeners]) listener({ data, source: meta.source ?? win?.parent, origin: meta.origin ?? 'https://chat.cherry.fun', isTrusted: meta.isTrusted ?? true } as { data: unknown });
   }
 
   /** Requests the app sent, with request ids replaced by stable aliases (`req#1`, …). */

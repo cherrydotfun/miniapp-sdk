@@ -1,6 +1,6 @@
 {
   "name": "@cherrydotfun/miniapp-sdk",
-  "version": "0.3.0-multichain.0",
+  "version": "0.3.0-multichain.1",
   "description": "SDK for building mini-apps embedded in Cherry messenger",
   "license": "MIT",
   "author": "Cherry.fun <dev@cherry.fun>",
