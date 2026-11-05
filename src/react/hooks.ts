@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react';
 import { useCherryMiniAppContext } from './provider';
 import { getCherryEnvironment, type DetectPlatformOptions } from '../env';
+import { readCherryDisplayContext } from '../context';
 import type {
   CherryUser,
   CherryRoom,
@@ -8,6 +9,8 @@ import type {
   CherryNavigate,
   CherryBlinkContext,
   CherryContext,
+  CherryDisplayContext,
+  MiniAppPublicProfile,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';
@@ -33,12 +36,39 @@ export function useCherryMiniApp(): UseCherryMiniAppResult {
 
 /**
  * The launch context — `appId`, `cherryId`, `paymentWallet` (+ kind),
- * `permissions`, `reach`, `tier`, `mode` — or `null` until the handshake
- * completes. Display-only: verify the launch token on your backend before
- * trusting any of it.
+ * `permissions`, `reach`, `tier`, `mode`, the display fields (`locale`,
+ * `colorScheme`, `platform`, `safeArea`, …) and `user` — or `null` until the
+ * handshake completes. Re-renders when the host reports a change.
+ * Display-only: verify the launch token on your backend before trusting any
+ * of it.
  */
 export function useCherryContext(): CherryContext | null {
   return useCherryMiniAppContext().context;
+}
+
+// ---- useCherryDisplayContext ----
+
+/**
+ * How the host wants the app to look — `locale`, `colorScheme`, `brand`,
+ * `platform`, `appVersion`, `safeArea` — and never `null`: before the
+ * handshake it is what the launch URL says (`cherry_lang` / `cherry_theme`,
+ * so the first paint is already right), then the live context.
+ */
+export function useCherryDisplayContext(): CherryDisplayContext {
+  const context = useCherryMiniAppContext().context;
+  return useMemo(() => context ?? readCherryDisplayContext(), [context]);
+}
+
+// ---- useCherryUser ----
+
+/**
+ * The person's public Cherry profile (`context.user`), or `null` until the
+ * handshake completes and on hosts that don't send it (then use
+ * `useCherryApp()?.users.me()`). Re-renders when the host sends a new one.
+ * For UI only — never authorize with it.
+ */
+export function useCherryUser(): MiniAppPublicProfile | null {
+  return useCherryMiniAppContext().context?.user ?? null;
 }
 
 // ---- useCherryApp (access CherryMiniApp instance for kit signer etc.) ----

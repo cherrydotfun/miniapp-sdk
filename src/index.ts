@@ -7,6 +7,17 @@ export {
   type BridgeRequest,
   type BridgeResponse,
   type BridgeEvent,
+  type BridgeContextMessage,
+  type CherryHostContext,
+  type CherryDisplayContext,
+  type CherryLocale,
+  type CherryColorScheme,
+  type CherryHostPlatform,
+  type CherrySafeArea,
+  type MiniAppPublicProfile,
+  type MiniAppUserSummary,
+  type MiniAppUserPage,
+  type MiniAppRelationship,
   type CherryPlatform,
   type CherryEnvironment,
   type LaunchTokenPayload,
@@ -43,10 +54,18 @@ export {
   type BridgeOptions,
   type BridgeTransport,
 } from './bridge';
-export { DEFAULT_TRUSTED_HOST_ORIGINS } from './constants';
+export { DEFAULT_TRUSTED_HOST_ORIGINS, CHERRY_LOCALES } from './constants';
 
 // Main client
-export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from './client';
+export {
+  CherryMiniApp,
+  type CherryMiniAppOptions,
+  type CherryMiniAppEvent,
+  type CherryContextListener,
+} from './client';
+
+// Context v2 — language, theme, platform, safe area (opt-in document helper)
+export { readCherryDisplayContext, applyCherryContextToDocument } from './context';
 
 // Server-side token verification
 export {

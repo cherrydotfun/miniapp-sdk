@@ -2,6 +2,13 @@ import { decodeJwt } from 'jose';
 import { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';
 import type { BridgeEvent } from './bridge';
 import {
+  CHERRY_LANG_PARAM,
+  CHERRY_THEME_PARAM,
+  normaliseProfile,
+  resolveDisplayContext,
+  sameDisplay,
+} from './context';
+import {
   BRIDGE_VERSION,
   type BridgeMessage,
   type BridgeInitMessage,
@@ -12,6 +19,7 @@ import {
   type LaunchTokenPayload,
   type CherryBlinkContext,
   type CherryContext,
+  type CherryDisplayContext,
   type CherryAppTier,
   type CherryReach,
   type CherryLaunchMode,
@@ -29,6 +37,12 @@ export type CherryMiniAppEvent =
   | 'blink:update';
 
 type EventListener<T = unknown> = (data: T) => void;
+
+/** Called with the new context every time it changes (see `CherryMiniApp#onContextChange`). */
+export type CherryContextListener = (context: CherryContext) => void;
+
+/** The launch half of the context — fixed for the launch. */
+type LaunchContext = Omit<CherryContext, keyof CherryDisplayContext | 'user'>;
 
 export interface CherryMiniAppOptions {
   /** Milliseconds to wait for cherry:init from the host. Default: 10_000 */
@@ -62,7 +76,9 @@ export class CherryMiniApp {
   private _publicKey: string | null = null;
   private _blink: CherryBlinkContext | null = null;
   private _claims: Partial<LaunchTokenPayload> | null = null;
+  private _launchContext: LaunchContext | null = null;
   private _context: CherryContext | null = null;
+  private readonly contextListeners = new Set<CherryContextListener>();
   private readonly initTimeout: number;
 
   constructor(options: CherryMiniAppOptions = {}) {
@@ -104,12 +120,31 @@ export class CherryMiniApp {
 
   /**
    * Everything the SDK resolved about this launch (app id, Cherry ID, payment
-   * wallet, permissions, reach, tier, mode). `null` until `init()` resolves.
-   * Display-only — verify `launchToken` on your backend before trusting any
-   * of it.
+   * wallet, permissions, reach, tier, mode), how the host wants the app to
+   * look (locale, colour scheme, platform, safe area) and the person's public
+   * profile (`user`). `null` until `init()` resolves; the display fields and
+   * `user` then follow the host — see {@link onContextChange}. Display-only —
+   * verify `launchToken` on your backend before trusting any of it.
    */
   get context(): CherryContext | null {
     return this._context;
+  }
+
+  /**
+   * Subscribe to context changes: called with the new `context` when `init()`
+   * first resolves it and whenever the host reports a new language, colour
+   * scheme, safe area or profile (`cherry:context`). Returns the unsubscribe
+   * function. Not called for an update that changes nothing.
+   *
+   * ```ts
+   * const off = cherry.onContextChange((ctx) => i18n.changeLanguage(ctx.locale ?? 'en'));
+   * ```
+   */
+  onContextChange(listener: CherryContextListener): () => void {
+    this.contextListeners.add(listener);
+    return () => {
+      this.contextListeners.delete(listener);
+    };
   }
 
   /** Your mini-app id, from the launch token. */
@@ -198,7 +233,7 @@ export class CherryMiniApp {
     this._launchToken = initMessage.token;
     this._publicKey = payload.sub;
     this._claims = payload;
-    this._context = resolveContext({
+    this._launchContext = resolveContext({
       claims: payload,
       mode: 'fullscreen',
       capabilities: initMessage.capabilities,
@@ -228,8 +263,14 @@ export class CherryMiniApp {
       if (message['type'] === 'cherry:init') {
         // The host re-sends cherry:init until it sees cherry:ready. A repeat
         // after we are ready means our ack was lost (e.g. the host's listener
-        // was not up yet): ack again, idempotently.
+        // was not up yet): ack again, idempotently. Its context is the
+        // host's current one (the bridge recorded it).
         this.bridge.sendToHost(readyMsg);
+        this.refreshContext();
+        return;
+      }
+      if (message['type'] === 'cherry:context') {
+        this.refreshContext();
         return;
       }
       if (message['type'] === 'cherry:event') {
@@ -244,6 +285,7 @@ export class CherryMiniApp {
     });
 
     this._isReady = true;
+    this.refreshContext();
   }
 
   /**
@@ -304,10 +346,14 @@ export class CherryMiniApp {
       }
     }
 
+    // Context v2 rides the host.init answer — newer than anything the host
+    // posted before it answered.
+    this.bridge.noteHostContext(ctx['context']);
+
     // The inline token is minted once per message for the whole room, so it
     // names no viewer: the viewer's Cherry ID and payment wallet come from the
     // host.init answer (hosts that support wallet switching), never the token.
-    this._context = resolveContext({
+    this._launchContext = resolveContext({
       claims,
       mode: isPreview ? 'preview' : 'inline',
       capabilities: ctx['capabilities'],
@@ -364,6 +410,10 @@ export class CherryMiniApp {
     // Subscribe to host events (blink:update, suspended, etc.).
     this.removeHostListener = this.bridge.startListening(
       (message: BridgeMessage) => {
+        if (message['type'] === 'cherry:context') {
+          this.refreshContext();
+          return;
+        }
         if (message['type'] === 'cherry:event') {
           const evt = message as unknown as BridgeEvent;
           this.emit(
@@ -375,6 +425,36 @@ export class CherryMiniApp {
     );
 
     this._isReady = true;
+    this.refreshContext();
+  }
+
+  /**
+   * Re-resolve `context` from the launch half, the host's latest context
+   * (`Bridge#hostContext`), the launch URL and the token's `locale` claim;
+   * tell the listeners when anything they can see changed.
+   */
+  private refreshContext(): void {
+    if (!this._launchContext) return;
+    const host = this.bridge.hostContext;
+    const next: CherryContext = {
+      ...this._launchContext,
+      ...resolveDisplayContext({
+        host,
+        urlLang: readLaunchParam(CHERRY_LANG_PARAM),
+        urlTheme: readLaunchParam(CHERRY_THEME_PARAM),
+        tokenLocale: this._claims?.locale,
+      }),
+      user: normaliseProfile(host?.['user']),
+    };
+    if (this._context && sameDisplay(this._context, next)) return;
+    this._context = next;
+    for (const listener of [...this.contextListeners]) {
+      try {
+        listener(next);
+      } catch {
+        // A listener's error must not disrupt the SDK or the other listeners
+      }
+    }
   }
 
   private waitForInit(): Promise<BridgeInitMessage> {
@@ -575,9 +655,11 @@ export class CherryMiniApp {
     this.removeHostListener?.();
     this.removeHostListener = null;
     this.eventListeners.clear();
+    this.contextListeners.clear();
     this._isReady = false;
     this._blink = null;
     this._claims = null;
+    this._launchContext = null;
     this._context = null;
     destroySharedBridge();
   }
@@ -647,7 +729,7 @@ function resolveContext(input: {
   mode: CherryLaunchMode;
   capabilities: unknown;
   viewer?: { cherryId: unknown; paymentWallet: unknown; paymentWalletKind: unknown };
-}): CherryContext {
+}): LaunchContext {
   const { claims, viewer } = input;
   const capabilities = stringList(input.capabilities) ?? [];
   // `permissions` is authoritative in the token; an older token lacks it, and

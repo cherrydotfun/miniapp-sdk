@@ -73,6 +73,14 @@ describe('CherryMiniApp context', () => {
       tier: 'verified',
       mode: 'fullscreen',
       hostCapabilities: ['wallet-switch'],
+      // No context v2 from this host, nothing in the URL or the token.
+      locale: null,
+      colorScheme: null,
+      brand: null,
+      platform: null,
+      appVersion: null,
+      safeArea: null,
+      user: null,
     });
     expect(app.cherryId).toBe('cid_7');
     expect(app.paymentWallet).toBe('Payer111');

@@ -15,3 +15,6 @@ export const DEFAULT_TRUSTED_HOST_ORIGINS: readonly string[] = Object.freeze([
   'https://cherry.fun',
   'https://*.cherry.fun',
 ]);
+
+/** The languages Cherry ships, as `CherryContext.locale` reports them. */
+export const CHERRY_LOCALES = Object.freeze(['en', 'ru', 'de', 'fr', 'es', 'id', 'vi', 'zh', 'ja', 'ko'] as const);

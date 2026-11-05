@@ -51,6 +51,10 @@ export function CherryMiniAppProvider({
     const app = new CherryMiniApp(opts);
     appRef.current = app;
 
+    // The context follows the host (language, theme, safe area, profile):
+    // every change re-renders the consumers of the context hooks.
+    const offContext = app.onContextChange((next) => setContext(next));
+
     app
       .init()
       .then(() => {
@@ -65,6 +69,7 @@ export function CherryMiniAppProvider({
       });
 
     return () => {
+      offContext();
       app.destroy();
       appRef.current = null;
     };

@@ -11,6 +11,8 @@ export {
   useCherryBlink,
   useCherryEnvironment,
   useCherryContext,
+  useCherryDisplayContext,
+  useCherryUser,
   type UseCherryMiniAppResult,
   type UseCherryWalletResult,
 } from './hooks';
@@ -28,16 +30,33 @@ export type {
   PaymentWalletSetBy,
   CherryBlinkContext,
   CherryContext,
+  CherryDisplayContext,
+  CherryLocale,
+  CherryColorScheme,
+  CherryHostPlatform,
+  CherrySafeArea,
+  MiniAppPublicProfile,
+  MiniAppUserSummary,
+  MiniAppUserPage,
+  MiniAppRelationship,
   CherryLaunchMode,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';
 
+// Context v2 helpers (no provider needed)
+export { readCherryDisplayContext, applyCherryContextToDocument } from '../context';
+
 // Re-export environment helpers (useful in non-hook contexts inside React apps)
 export { isInsideCherry, getCherryEnvironment, detectPlatform, type DetectPlatformOptions } from '../env';
 
 // Re-export main client for direct use
-export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from '../client';
+export {
+  CherryMiniApp,
+  type CherryMiniAppOptions,
+  type CherryMiniAppEvent,
+  type CherryContextListener,
+} from '../client';
 export { verifyLaunchToken, LaunchTokenError, type VerifyLaunchTokenOptions } from '../token';
 export {
   BridgeError,

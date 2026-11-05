@@ -71,6 +71,9 @@ export class Bridge {
    */
   private _bufferedInit: BridgeMessage | null = null;
 
+  /** The latest context v2 object the host sent, in arrival order (see `hostContext`). */
+  private _hostContext: Readonly<Record<string, unknown>> | null = null;
+
   constructor(options: BridgeOptions = {}) {
     this.configure(options);
 
@@ -93,7 +96,17 @@ export class Bridge {
       const message = data as BridgeMessage;
       if (!message.type.startsWith('cherry:')) return;
 
+      // A context update is accepted only once the host origin is LOCKED (by
+      // its cherry:init or its host.init answer) — it never locks one itself.
+      if (transport === 'iframe' && message.type === 'cherry:context' && this._hostOrigin === null) return;
+
       if (transport === 'iframe' && !this.acceptOrigin(event.origin)) return;
+
+      // Context v2 rides cherry:init and cherry:context; keep the latest, so
+      // one sent before the app called init() is not lost.
+      if (message.type === 'cherry:init' || message.type === 'cherry:context') {
+        this.noteHostContext(message['context']);
+      }
 
       // Resolve pending request if this is a response
       if (message['type'] === 'cherry:response') {
@@ -171,6 +184,35 @@ export class Bridge {
     return isTrustedHostOrigin(origin, [...this.extraOrigins]);
   }
 
+  /** The extra trusted origins configured on this bridge (`trustedOrigins`), normalised. */
+  get trustedOrigins(): readonly string[] {
+    return [...this.extraOrigins];
+  }
+
+  /**
+   * The latest context v2 object (raw, unvalidated) the host sent — from
+   * `cherry:init`, `cherry:context` or the inline `host.init` answer, the one
+   * that arrived last. A message without `user` keeps the previous `user`.
+   * `null` before any. Read it through `CherryMiniApp#context`.
+   */
+  get hostContext(): Readonly<Record<string, unknown>> | null {
+    return this._hostContext;
+  }
+
+  /**
+   * Record a context object received from the host. Called by the bridge
+   * itself and, for the inline `host.init` answer, by the client.
+   * @internal
+   */
+  noteHostContext(context: unknown): boolean {
+    if (!isObject(context)) return false;
+    const previousUser = this._hostContext?.['user'];
+    this._hostContext = Object.freeze(
+      context['user'] === undefined && previousUser !== undefined ? { ...context, user: previousUser } : { ...context },
+    );
+    return true;
+  }
+
   /**
    * Returns a previously buffered cherry:init message (if any) and clears the
    * buffer. Called by waitForInit() to handle the case where the host sent
@@ -242,6 +284,7 @@ export class Bridge {
     }
     this.handlers.length = 0;
     this.outbox.length = 0;
+    this._hostContext = null;
   }
 
   /**

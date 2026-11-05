@@ -10,6 +10,136 @@ export interface BridgeInitMessage extends BridgeMessage {
   version: number;
   token: string;
   capabilities: string[];
+  /** Context v2 — the host's language, theme, platform and safe area. Absent on older hosts. */
+  context?: CherryHostContext;
+}
+
+/**
+ * Host → app, whenever the language, the colour scheme or the safe area
+ * changes while the app is open. Carries the FULL context object (a `user`
+ * left out keeps the last one sent).
+ */
+export interface BridgeContextMessage extends BridgeMessage {
+  type: 'cherry:context';
+  context: CherryHostContext;
+}
+
+// ---- context v2 (language, theme, platform, safe area) ----
+
+/** The languages Cherry ships. Hosts may add more — treat `locale` as an open string. */
+export type CherryLocale = 'en' | 'ru' | 'de' | 'fr' | 'es' | 'id' | 'vi' | 'zh' | 'ja' | 'ko';
+
+/** The colour scheme the Cherry host is painted in. */
+export type CherryColorScheme = 'dark' | 'light';
+
+/**
+ * The device the Cherry HOST runs on. Not the bridge transport — that is
+ * {@link CherryPlatform} (`webview` / `iframe` / `standalone`).
+ */
+export type CherryHostPlatform = 'ios' | 'android' | 'web';
+
+/**
+ * How far system UI (notch, home indicator, rounded corners) reaches into the
+ * mini-app's view, per edge, in CSS px. Zero where the host's own chrome
+ * already keeps the app clear of it.
+ */
+export interface CherrySafeArea {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * The person's public Cherry profile — what anyone can see on their Cherry
+ * page. Never includes hidden wallets, email, phone, keys or any other
+ * private data. **Display-only** on the client (it is not signed); a backend
+ * reads it from the Cherry API with the verified launch token.
+ */
+export interface MiniAppPublicProfile {
+  cherryId: string;
+  handle: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  /** ISO 8601 timestamp of the account's creation. */
+  createdAt: string | null;
+  /** Cherry level and its points (CP). */
+  level: { level: number; cp: number } | null;
+  pet: { name: string; species: string | null; stage: string | null; imageUrl: string | null } | null;
+  /** Linked social accounts the person shows publicly. */
+  socials: Array<{ provider: string; handle: string; url: string | null; verified: boolean }>;
+  /** Wallets the person shows publicly (hidden ones are never listed). */
+  wallets: Array<{ address: string; chain: 'solana' | 'evm'; cherryWallet: boolean; domains: string[] }>;
+  badges: Array<{ id: string; label: string; iconUrl: string | null }>;
+  social: { followers: number; following: number };
+  /** Trading figures over `window` (e.g. `'30d'`); `null` when not shown. */
+  trading: { pnlUsd: number | null; volumeUsd: number | null; window: string } | null;
+}
+
+/** One person in a followers / following page. */
+export interface MiniAppUserSummary {
+  cherryId: string;
+  handle: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+  level: number | null;
+}
+
+/** A page of `users.followers()` / `users.following()`. */
+export interface MiniAppUserPage {
+  items: MiniAppUserSummary[];
+  /** Pass as `cursor` for the next page; `null` on the last one. */
+  nextCursor: string | null;
+}
+
+/** How the launching person and another Cherry ID relate. */
+export interface MiniAppRelationship {
+  /** The launching person follows them. */
+  following: boolean;
+  /** They follow the launching person. */
+  followedBy: boolean;
+}
+
+/**
+ * Context v2 as it travels on the wire: `cherry:init.context`,
+ * `cherry:context.context` and the inline `host.init` answer's `context`.
+ * Read it through `CherryContext` — the SDK validates every field.
+ */
+export interface CherryHostContext {
+  v: 2;
+  locale: string;
+  colorScheme: CherryColorScheme;
+  /** The host's palette / brand name, e.g. `'cherry'`. Informational. */
+  brand: string;
+  platform: CherryHostPlatform;
+  /** The Cherry app's version, when the host reports it (mobile). */
+  appVersion?: string;
+  safeArea: CherrySafeArea;
+  /** The person's public profile, on hosts and servers that provide it. */
+  user?: MiniAppPublicProfile;
+}
+
+/**
+ * How the host wants the app to look: language, colour scheme, safe area.
+ * Part of {@link CherryContext}; also readable BEFORE `init()` with
+ * `readCherryDisplayContext()` (from the launch URL), so the first paint can
+ * already be right.
+ *
+ * Each field resolves, in priority order, from: the latest host context
+ * (`cherry:context`, else the init / `host.init` one), then the launch URL's
+ * `cherry_lang` / `cherry_theme`, then the launch token's `locale` claim.
+ * `null` = nobody said.
+ */
+export interface CherryDisplayContext {
+  /** BCP 47 language tag the person uses Cherry in (one of {@link CherryLocale} today). */
+  locale: CherryLocale | (string & {}) | null;
+  colorScheme: CherryColorScheme | null;
+  brand: string | null;
+  platform: CherryHostPlatform | null;
+  appVersion: string | null;
+  /** `null` until a host reports it — then fall back to CSS `env(safe-area-inset-*)`. */
+  safeArea: CherrySafeArea | null;
 }
 
 export interface BridgeReadyMessage extends BridgeMessage {
@@ -151,6 +281,8 @@ export interface LaunchTokenPayload {
   reach?: CherryReach;
   /** Trust tier of the mini-app — decides the host's wallet limits. */
   tier?: CherryAppTier;
+  /** The language the person uses Cherry in (`en`, `ru`, `de`, …), when the server knows it. */
+  locale?: CherryLocale | (string & {});
 
   // ── Inline / blink claims ─────────────────────────────────────────────────
   // Present on inline-blink and fullscreen launch tokens (NOT on the legacy
@@ -257,8 +389,12 @@ export type CherryLaunchMode = 'fullscreen' | 'inline' | 'preview';
  * Launch context the SDK resolved from the host handshake. **Display-only**:
  * it comes from the client and is not verified — authorize nothing with it.
  * Send `cherry.launchToken` to your backend and use `verifyLaunchToken` there.
+ *
+ * The display fields ({@link CherryDisplayContext}: `locale`, `colorScheme`,
+ * `safeArea`, …) and `user` follow the host live — subscribe with
+ * `cherry.onContextChange()` (React hooks re-render on their own).
  */
-export interface CherryContext {
+export interface CherryContext extends CherryDisplayContext {
   /** Your mini-app id — `aud`, else `mini_app_id`, else `app_id` of the launch token. */
   appId: string | null;
   /** The person's Cherry ID (stable across their wallets), when known. */
@@ -278,6 +414,12 @@ export interface CherryContext {
   mode: CherryLaunchMode;
   /** Host features beyond permissions (e.g. `'wallet-switch'`). */
   hostCapabilities: readonly string[];
+  /**
+   * The person's public Cherry profile, when the host sent one (`null` on
+   * older hosts / servers — use `cherry.users.me()` then). Not to be
+   * confused with `cherry.user` (identity wallet + display name). For UI only.
+   */
+  user: MiniAppPublicProfile | null;
 }
 
 export interface CherryUser {
