@@ -250,6 +250,36 @@ export interface CherryBlinkContext {
   jti: string | null;
 }
 
+/** How the mini-app was launched: a full screen, an inline blink card, or a share-picker preview. */
+export type CherryLaunchMode = 'fullscreen' | 'inline' | 'preview';
+
+/**
+ * Launch context the SDK resolved from the host handshake. **Display-only**:
+ * it comes from the client and is not verified — authorize nothing with it.
+ * Send `cherry.launchToken` to your backend and use `verifyLaunchToken` there.
+ */
+export interface CherryContext {
+  /** Your mini-app id — `aud`, else `mini_app_id`, else `app_id` of the launch token. */
+  appId: string | null;
+  /** The person's Cherry ID (stable across their wallets), when known. */
+  cherryId: string | null;
+  /**
+   * The wallet Cherry signs with in this app, when the host reports one.
+   * `null` → it is `user.publicKey` / `wallet.publicKey`.
+   */
+  paymentWallet: string | null;
+  paymentWalletKind: PaymentWalletKind | null;
+  paymentWalletSetBy: PaymentWalletSetBy | null;
+  /** Bridge permissions granted for this launch (may be empty in inline blinks). */
+  permissions: readonly string[];
+  reach: CherryReach | null;
+  /** Trust tier — decides the host's wallet limits. `null` on tokens that predate it. */
+  tier: CherryAppTier | null;
+  mode: CherryLaunchMode;
+  /** Host features beyond permissions (e.g. `'wallet-switch'`). */
+  hostCapabilities: readonly string[];
+}
+
 export interface CherryUser {
   publicKey: string;
   displayName: string;

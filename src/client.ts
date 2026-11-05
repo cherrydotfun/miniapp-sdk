@@ -11,6 +11,12 @@ import {
   type CherryNavigate,
   type LaunchTokenPayload,
   type CherryBlinkContext,
+  type CherryContext,
+  type CherryAppTier,
+  type CherryReach,
+  type CherryLaunchMode,
+  type PaymentWalletKind,
+  type PaymentWalletSetBy,
   type ShareBlinkOptions,
   type ShareBlinkResult,
 } from './types';
@@ -55,6 +61,8 @@ export class CherryMiniApp {
   private _launchToken: string | null = null;
   private _publicKey: string | null = null;
   private _blink: CherryBlinkContext | null = null;
+  private _claims: Partial<LaunchTokenPayload> | null = null;
+  private _context: CherryContext | null = null;
   private readonly initTimeout: number;
 
   constructor(options: CherryMiniAppOptions = {}) {
@@ -94,6 +102,75 @@ export class CherryMiniApp {
     return this._blink;
   }
 
+  /**
+   * Everything the SDK resolved about this launch (app id, Cherry ID, payment
+   * wallet, permissions, reach, tier, mode). `null` until `init()` resolves.
+   * Display-only — verify `launchToken` on your backend before trusting any
+   * of it.
+   */
+  get context(): CherryContext | null {
+    return this._context;
+  }
+
+  /** Your mini-app id, from the launch token. */
+  get appId(): string | null {
+    return this._context?.appId ?? null;
+  }
+
+  /** The person's Cherry ID — stable across all their wallets. */
+  get cherryId(): string | null {
+    return this._context?.cherryId ?? null;
+  }
+
+  /**
+   * The wallet Cherry signs with in this app, when the host reports one
+   * (it can differ from `user.publicKey` if the person picked another wallet
+   * for your app). `null` → use `wallet.publicKey`.
+   */
+  get paymentWallet(): string | null {
+    return this._context?.paymentWallet ?? null;
+  }
+
+  get paymentWalletKind(): PaymentWalletKind | null {
+    return this._context?.paymentWalletKind ?? null;
+  }
+
+  get paymentWalletSetBy(): PaymentWalletSetBy | null {
+    return this._context?.paymentWalletSetBy ?? null;
+  }
+
+  /** Bridge permissions granted for this launch (e.g. `wallet:sign`). */
+  get permissions(): readonly string[] {
+    return this._context?.permissions ?? [];
+  }
+
+  /** Whether this launch was granted `permission` (e.g. `'wallet:send'`). */
+  hasPermission(permission: string): boolean {
+    return this.permissions.includes(permission);
+  }
+
+  get reach(): CherryReach | null {
+    return this._context?.reach ?? null;
+  }
+
+  /** Trust tier of the app — decides the host's wallet limits. */
+  get tier(): CherryAppTier | null {
+    return this._context?.tier ?? null;
+  }
+
+  /** `'fullscreen'`, `'inline'` or `'preview'`; `null` until ready. */
+  get mode(): CherryLaunchMode | null {
+    return this._context?.mode ?? null;
+  }
+
+  /**
+   * The raw launch-token claims, decoded but NOT verified. For display and
+   * debugging; never for authorization (see `verifyLaunchToken`).
+   */
+  get claims(): Readonly<Partial<LaunchTokenPayload>> | null {
+    return this._claims;
+  }
+
   // ---- init ----
 
   async init(): Promise<void> {
@@ -120,6 +197,12 @@ export class CherryMiniApp {
 
     this._launchToken = initMessage.token;
     this._publicKey = payload.sub;
+    this._claims = payload;
+    this._context = resolveContext({
+      claims: payload,
+      mode: 'fullscreen',
+      capabilities: initMessage.capabilities,
+    });
 
     this._user = {
       publicKey: payload.sub,
@@ -215,10 +298,25 @@ export class CherryMiniApp {
       try {
         claims = decodeJwt(token) as unknown as LaunchTokenPayload;
         if (!roomId) roomId = String(claims.room_id ?? '');
+        this._claims = claims;
       } catch {
         // opaque token — ignore
       }
     }
+
+    // The inline token is minted once per message for the whole room, so it
+    // names no viewer: the viewer's Cherry ID and payment wallet come from the
+    // host.init answer (hosts that support wallet switching), never the token.
+    this._context = resolveContext({
+      claims,
+      mode: isPreview ? 'preview' : 'inline',
+      capabilities: ctx['capabilities'],
+      viewer: {
+        cherryId: ctx['viewerCherryId'],
+        paymentWallet: ctx['viewerPaymentWallet'],
+        paymentWalletKind: ctx['viewerPaymentWalletKind'],
+      },
+    });
 
     this._user = {
       publicKey: viewerWallet,
@@ -447,6 +545,8 @@ export class CherryMiniApp {
     this.eventListeners.clear();
     this._isReady = false;
     this._blink = null;
+    this._claims = null;
+    this._context = null;
     destroySharedBridge();
   }
 
@@ -457,6 +557,60 @@ export class CherryMiniApp {
       throw new Error('CherryMiniApp is not ready. Call init() first.');
     }
   }
+}
+
+// ---- context helpers ----
+
+const TIERS: readonly CherryAppTier[] = ['unverified', 'verified', 'partner'];
+const REACHES: readonly CherryReach[] = ['project', 'external'];
+const WALLET_KINDS: readonly PaymentWalletKind[] = ['app_held', 'external'];
+const SET_BY: readonly PaymentWalletSetBy[] = ['history', 'signature', 'user'];
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | null {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function stringList(value: unknown): string[] | null {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : null;
+}
+
+/**
+ * The launch context from (unverified) token claims, the handshake's
+ * capability list and — inline — the host.init viewer fields, which win.
+ */
+function resolveContext(input: {
+  claims: Partial<LaunchTokenPayload>;
+  mode: CherryLaunchMode;
+  capabilities: unknown;
+  viewer?: { cherryId: unknown; paymentWallet: unknown; paymentWalletKind: unknown };
+}): CherryContext {
+  const { claims, viewer } = input;
+  const capabilities = stringList(input.capabilities) ?? [];
+  // `permissions` is authoritative in the token; an older token lacks it, and
+  // then the handshake's capability list (permissions + host features) is
+  // the next best source — permissions are the `scope:action` entries.
+  const permissions = stringList(claims.permissions) ?? capabilities.filter((c) => c.includes(':'));
+  const aud = typeof claims.aud === 'string' ? claims.aud : null;
+
+  const paymentWallet = nonEmptyString(viewer?.paymentWallet) ?? nonEmptyString(claims.payment_wallet);
+  return {
+    appId: nonEmptyString(aud) ?? nonEmptyString(claims.mini_app_id) ?? nonEmptyString(claims.app_id),
+    cherryId: nonEmptyString(viewer?.cherryId) ?? nonEmptyString(claims.cherry_id),
+    paymentWallet,
+    paymentWalletKind: paymentWallet
+      ? oneOf(viewer?.paymentWalletKind, WALLET_KINDS) ?? oneOf(claims.payment_wallet_kind, WALLET_KINDS)
+      : null,
+    paymentWalletSetBy: paymentWallet && !viewer?.paymentWallet ? oneOf(claims.payment_wallet_set_by, SET_BY) : null,
+    permissions: Object.freeze([...permissions]),
+    reach: oneOf(claims.reach, REACHES),
+    tier: oneOf(claims.tier, TIERS),
+    mode: input.mode,
+    hostCapabilities: Object.freeze(capabilities.filter((c) => !permissions.includes(c))),
+  };
 }
 
 // ---- launch URL helpers ----

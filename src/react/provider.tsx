@@ -7,7 +7,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import { CherryMiniApp, type CherryMiniAppOptions } from '../client';
-import type { CherryUser, CherryRoom } from '../types';
+import type { CherryUser, CherryRoom, CherryContext } from '../types';
 
 // ---- context shape ----
 
@@ -17,6 +17,7 @@ interface CherryMiniAppContextValue {
   user: CherryUser | null;
   room: CherryRoom | null;
   launchToken: string | null;
+  context: CherryContext | null;
   error: Error | null;
 }
 
@@ -39,6 +40,7 @@ export function CherryMiniAppProvider({
   const [user, setUser] = useState<CherryUser | null>(null);
   const [room, setRoom] = useState<CherryRoom | null>(null);
   const [launchToken, setLaunchToken] = useState<string | null>(null);
+  const [context, setContext] = useState<CherryContext | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export function CherryMiniAppProvider({
         setUser(app.user);
         setRoom(app.room);
         setLaunchToken(app.launchToken);
+        setContext(app.context);
         setIsReady(true);
       })
       .catch((err: unknown) => {
@@ -75,6 +78,7 @@ export function CherryMiniAppProvider({
     user,
     room,
     launchToken,
+    context,
     error,
   };
 

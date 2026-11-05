@@ -7,6 +7,7 @@ import type {
   CherryEnvironment,
   CherryNavigate,
   CherryBlinkContext,
+  CherryContext,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';
@@ -17,13 +18,27 @@ export interface UseCherryMiniAppResult {
   user: CherryUser | null;
   room: CherryRoom | null;
   launchToken: string | null;
+  /** Launch context (app id, Cherry ID, payment wallet, permissions, tier…); `null` until ready. */
+  context: CherryContext | null;
   isReady: boolean;
   error: Error | null;
 }
 
 export function useCherryMiniApp(): UseCherryMiniAppResult {
-  const { user, room, launchToken, isReady, error } = useCherryMiniAppContext();
-  return { user, room, launchToken, isReady, error };
+  const { user, room, launchToken, context, isReady, error } = useCherryMiniAppContext();
+  return { user, room, launchToken, context, isReady, error };
+}
+
+// ---- useCherryContext ----
+
+/**
+ * The launch context — `appId`, `cherryId`, `paymentWallet` (+ kind),
+ * `permissions`, `reach`, `tier`, `mode` — or `null` until the handshake
+ * completes. Display-only: verify the launch token on your backend before
+ * trusting any of it.
+ */
+export function useCherryContext(): CherryContext | null {
+  return useCherryMiniAppContext().context;
 }
 
 // ---- useCherryApp (access CherryMiniApp instance for kit signer etc.) ----

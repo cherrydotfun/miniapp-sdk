@@ -10,6 +10,7 @@ export {
   useCherryShare,
   useCherryBlink,
   useCherryEnvironment,
+  useCherryContext,
   type UseCherryMiniAppResult,
   type UseCherryWalletResult,
 } from './hooks';
@@ -26,6 +27,8 @@ export type {
   PaymentWalletKind,
   PaymentWalletSetBy,
   CherryBlinkContext,
+  CherryContext,
+  CherryLaunchMode,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';
