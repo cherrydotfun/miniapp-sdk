@@ -44,10 +44,68 @@ export interface CherryEnvironment {
   platform: CherryPlatform;
 }
 
+/**
+ * Trust tier of a mini-app, set by Cherry. It decides the wallet limits the
+ * host enforces (see the README, "Wallet limits & policy errors"):
+ * `unverified` — self-serve listing, $50 per transaction and per wallet per
+ * day, risky instructions refused; `verified` — $5,000 per transaction,
+ * $25,000 per day; `partner` — no SDK-side limits.
+ */
+export type CherryAppTier = 'unverified' | 'verified' | 'partner';
+
+/**
+ * Where this launch happened relative to the mini-app's own project:
+ * `project` — a room of the project that owns the mini-app; `external` — any
+ * other room. The granted `permissions` can differ between the two.
+ */
+export type CherryReach = 'project' | 'external';
+
+/**
+ * Who holds the keys of the payment wallet: `app_held` — Cherry's custody
+ * (the Cherry Wallet), `external` — the person's own wallet software.
+ */
+export type PaymentWalletKind = 'app_held' | 'external';
+
+/**
+ * Why the payment wallet is the one it is, when a stored choice decided it:
+ * `user` — the person picked it in this mini-app; `signature` — the host saw
+ * them sign with it here; `history` — back-filled from past signatures.
+ */
+export type PaymentWalletSetBy = 'history' | 'signature' | 'user';
+
+/**
+ * Claims of a Cherry launch token (RS256 JWT, issuer `https://chat.cherry.fun`).
+ *
+ * Three token shapes share this type:
+ *  - **Room launch** (`cherry:init` handshake, `POST /api/miniapp/launch-token`):
+ *    `sub`, `app_id` (= your mini-app id), `room_id`, `user`, `room`, `origin`,
+ *    plus the identity claims (`cherry_id`, `payment_wallet*`), `permissions`,
+ *    `reach`, `aud`, `tier`. No `scope` claim.
+ *  - **Inline blink** (`scope: 'inline'`): `mini_app_id`, `message_id`,
+ *    `params`, `route`, `height`, … — minted once per message for the whole
+ *    room, so there is NO `sub`/`user` (the viewer comes from `host.init`).
+ *    `app_id`, when present, is the bot/app that sent the blink.
+ *  - **Bot fullscreen launch** (`scope: 'fullscreen'`): `mini_app_id`,
+ *    `viewer_wallet`, `route`, `params`, identity claims.
+ *
+ * `user`, `room`, `origin` and `sub` are typed as always present for backward
+ * compatibility, but only room-launch tokens carry them.
+ */
 export interface LaunchTokenPayload {
+  /** Issuer — always `https://chat.cherry.fun` for production tokens. */
+  iss?: string;
+  /**
+   * Audience — the mini-app id the token was minted for. Being rolled out:
+   * absent on older tokens. `verifyLaunchToken` rejects a token whose `aud`
+   * is present and is not your app id.
+   */
+  aud?: string | string[];
+  /** Wallet address the person is using in the app (their identity to you). */
   sub: string;
+  /** Room launch: your mini-app id. Inline/bot tokens: the sending app's id. */
   app_id: string;
   room_id: string;
+  /** First allowed origin registered for the mini-app (room launches). */
   origin: string;
   user: {
     display_name: string;
@@ -59,7 +117,40 @@ export interface LaunchTokenPayload {
   };
   iat: number;
   exp: number;
+  /** Not-before (unix seconds), if the issuer set one. */
+  nbf?: number;
   jti: string;
+
+  // ── Identity & trust claims ───────────────────────────────────────────────
+
+  /**
+   * Stable id of the PERSON behind `sub` (a Cherry ID). One person can use
+   * several wallets; key long-lived user records by `cherry_id` when present,
+   * falling back to `sub`. Absent when the wallet has no Cherry ID, and on
+   * room-wide tokens (inline blinks).
+   */
+  cherry_id?: string;
+  /**
+   * The wallet Cherry will sign with in this app — build transactions with it
+   * as the fee payer / signer. May differ from `sub` when the person picked
+   * another wallet for this app. Absent on hosts/sessions that don't support
+   * switching wallets (then it is `sub`).
+   */
+  payment_wallet?: string;
+  /** Custody of `payment_wallet`. Present iff `payment_wallet` is. */
+  payment_wallet_kind?: PaymentWalletKind;
+  /** Present only when a stored choice decided `payment_wallet`. */
+  payment_wallet_set_by?: PaymentWalletSetBy;
+  /**
+   * Bridge permissions granted for THIS launch (e.g. `wallet:sign`,
+   * `wallet:send`, `navigate:profile`). Resolved per launch — it can depend on
+   * `reach` — so read it from the token, not from your manifest.
+   */
+  permissions?: string[];
+  /** Whether the launch room belongs to the mini-app's own project. */
+  reach?: CherryReach;
+  /** Trust tier of the mini-app — decides the host's wallet limits. */
+  tier?: CherryAppTier;
 
   // ── Inline / blink claims ─────────────────────────────────────────────────
   // Present on inline-blink and fullscreen launch tokens (NOT on the legacy

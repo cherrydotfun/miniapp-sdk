@@ -21,6 +21,10 @@ export type {
   CherryEnvironment,
   CherryPlatform,
   LaunchTokenPayload,
+  CherryAppTier,
+  CherryReach,
+  PaymentWalletKind,
+  PaymentWalletSetBy,
   CherryBlinkContext,
   ShareBlinkOptions,
   ShareBlinkResult,
@@ -31,5 +35,5 @@ export { isInsideCherry, getCherryEnvironment, detectPlatform, type DetectPlatfo
 
 // Re-export main client for direct use
 export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from '../client';
-export { verifyLaunchToken } from '../token';
+export { verifyLaunchToken, LaunchTokenError, type VerifyLaunchTokenOptions } from '../token';
 export { BRIDGE_VERSION } from '../types';

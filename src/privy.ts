@@ -1,7 +1,5 @@
 import type { CherryMiniApp } from './client';
-
-const CHERRY_JWKS_URL = 'https://chat.cherry.fun/.well-known/jwks.json';
-const CHERRY_ISSUER = 'https://chat.cherry.fun';
+import { CHERRY_ISSUER, CHERRY_JWKS_URL } from './constants';
 
 export interface CherryCustomAuthConfig {
   /** The raw JWT launch token to pass to Privy's `loginWithCustomAccessToken()`. */

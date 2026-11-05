@@ -10,6 +10,10 @@ export {
   type CherryPlatform,
   type CherryEnvironment,
   type LaunchTokenPayload,
+  type CherryAppTier,
+  type CherryReach,
+  type PaymentWalletKind,
+  type PaymentWalletSetBy,
   type CherryUser,
   type CherryRoom,
   type CherryNavigate,
@@ -29,7 +33,13 @@ export { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bri
 export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from './client';
 
 // Server-side token verification
-export { verifyLaunchToken } from './token';
+export {
+  verifyLaunchToken,
+  LaunchTokenError,
+  type VerifyLaunchTokenOptions,
+  type LaunchTokenErrorCode,
+  type LaunchTokenScope,
+} from './token';
 
 // Custom auth helpers (Privy, etc.)
 export {
