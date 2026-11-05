@@ -46,6 +46,7 @@ export type {
 
 // Context v2 helpers (no provider needed)
 export { readCherryDisplayContext, applyCherryContextToDocument } from '../context';
+export { CherryApiError, type CherryApiErrorCode, type CherryUsersApi, type CherryUserPageOptions } from '../users';
 
 // Re-export environment helpers (useful in non-hook contexts inside React apps)
 export { isInsideCherry, getCherryEnvironment, detectPlatform, type DetectPlatformOptions } from '../env';

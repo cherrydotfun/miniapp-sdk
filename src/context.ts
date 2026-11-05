@@ -5,6 +5,9 @@ import type {
   CherryHostPlatform,
   CherrySafeArea,
   MiniAppPublicProfile,
+  MiniAppRelationship,
+  MiniAppUserPage,
+  MiniAppUserSummary,
 } from './types';
 
 // Context v2: the host's language, colour scheme, platform and safe area, and
@@ -243,4 +246,29 @@ export function normaliseProfile(raw: unknown): MiniAppPublicProfile | null {
         }
       : null,
   };
+}
+
+function userSummaryOf(raw: unknown): MiniAppUserSummary | null {
+  if (!isObject(raw)) return null;
+  const cherryId = text(raw['cherryId'], 128);
+  if (!cherryId) return null;
+  return {
+    cherryId,
+    handle: nullableText(raw['handle'], 128),
+    displayName: typeof raw['displayName'] === 'string' ? raw['displayName'] : '',
+    avatarUrl: nullableText(raw['avatarUrl']),
+    level: finite(raw['level']),
+  };
+}
+
+/** A followers / following page from untrusted JSON, or `null` without an `items` list. */
+export function normaliseUserPage(raw: unknown): MiniAppUserPage | null {
+  if (!isObject(raw) || !Array.isArray(raw['items'])) return null;
+  return { items: list(raw['items'], userSummaryOf), nextCursor: text(raw['nextCursor'], 2048) };
+}
+
+/** A relationship answer from untrusted JSON, or `null` when it is not one. */
+export function normaliseRelationship(raw: unknown): MiniAppRelationship | null {
+  if (!isObject(raw) || typeof raw['following'] !== 'boolean' || typeof raw['followedBy'] !== 'boolean') return null;
+  return { following: raw['following'], followedBy: raw['followedBy'] };
 }

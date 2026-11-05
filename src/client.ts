@@ -8,6 +8,7 @@ import {
   resolveDisplayContext,
   sameDisplay,
 } from './context';
+import { createCherryUsersApi, type CherryUsersApi } from './users';
 import {
   BRIDGE_VERSION,
   type BridgeMessage,
@@ -146,6 +147,18 @@ export class CherryMiniApp {
       this.contextListeners.delete(listener);
     };
   }
+
+  /**
+   * The person's public Cherry profile and social graph, read from the Cherry
+   * API with the current launch token (`Authorization: Bearer`). The API's
+   * origin is the token's issuer, and only when it is a trusted Cherry origin
+   * — the token is never sent anywhere else. Failures are `CherryApiError`s.
+   * For UI: a backend reads the same API with the token it verified.
+   */
+  readonly users: CherryUsersApi = createCherryUsersApi({
+    getToken: () => this._launchToken,
+    trustedOrigins: () => this.bridge.trustedOrigins,
+  });
 
   /** Your mini-app id, from the launch token. */
   get appId(): string | null {

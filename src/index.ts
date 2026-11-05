@@ -67,6 +67,15 @@ export {
 // Context v2 — language, theme, platform, safe area (opt-in document helper)
 export { readCherryDisplayContext, applyCherryContextToDocument } from './context';
 
+// Public profile API (`cherry.users`)
+export {
+  CherryApiError,
+  cherryApiOrigin,
+  type CherryApiErrorCode,
+  type CherryUsersApi,
+  type CherryUserPageOptions,
+} from './users';
+
 // Server-side token verification
 export {
   verifyLaunchToken,
