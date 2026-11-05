@@ -1,505 +1,252 @@
 ---
 name: cherry-miniapp-integration
-description: "Use when integrating @cherrydotfun/miniapp-sdk into an existing web3 application — adding Cherry embed support, wallet bridge, environment detection, and conditional UI rendering for apps that run both standalone and inside Cherry messenger."
+description: "Use when integrating @cherrydotfun/miniapp-sdk into a web app so it runs as a Cherry mini-app (inside the Cherry messenger's web iframe and mobile WebView) — seamless login via the launch token, backend token verification, Cherry wallet signing, framing headers, wallet-limit/policy error handling, on-chain attribution (app reference key) and Cherry fee splits, and passing the automated listing test."
 ---
 
-# Cherry Mini-App SDK Integration
+# Cherry Mini-App SDK Integration (v0.1.22)
 
 ## Overview
 
-Step-by-step guide for integrating `@cherrydotfun/miniapp-sdk` into an existing web3 application so it works both as a standalone app and embedded inside Cherry messenger (WebView on mobile, iframe on web).
+A Cherry mini-app is an existing website that Cherry opens inside its
+messenger: an `<iframe>` in `https://chat.cherry.fun` on web, a React Native
+WebView on mobile, or an inline "blink" card in a chat message. Inside Cherry
+the person is **already signed in and has a wallet** — the app must not show a
+wallet-connect button or ask for a login signature. Identity arrives as a
+signed **launch token** that the app's **backend** verifies.
 
-The SDK supports two Solana integration paths:
-- **@solana/web3.js** — legacy wallet-adapter (`sdk/solana`)
-- **@solana/kit** — modern TransactionSigner (`sdk/kit`)
+The authoritative reference is the package README
+(`node_modules/@cherrydotfun/miniapp-sdk/README.md`) — read the sections named
+in each step. Blinks: `BLINKS.md` in the same package.
 
 ## When to Use
 
-- Adding Cherry embed support to an existing Solana dApp
-- Making a game or utility embeddable inside Cherry chat rooms
-- Letting users share results from the app into chats as inline blink cards (Step 7b)
-- Migrating from the legacy `cherry-wallet-bridge` protocol to SDK v2
-- Setting up conditional UI (hide/show elements) based on embed context
+- Making a Solana dApp, game or tool run inside Cherry (fullscreen or as a blink)
+- Replacing an in-app login/connect flow with Cherry's seamless auth
+- Verifying Cherry launch tokens on a backend (Node, Python, Go)
+- Adding the app reference key / Cherry fee split to transactions
+- Preparing an app for the self-serve listing test
+- Upgrading from SDK 0.1.21
 
-## Prerequisites
+## Non-negotiables (the listing test checks these)
 
-The target app must be:
-- A web application (React, Vue, vanilla JS, etc.)
-- Using Solana (either @solana/web3.js or @solana/kit)
-- Deployable as a static site or SPA accessible via URL
+1. HTTPS + `Content-Security-Policy: frame-ancestors https://chat.cherry.fun https://cherry.fun https://*.cherry.fun`, and no `X-Frame-Options: DENY/SAMEORIGIN`.
+2. `cherry.init()` / `<CherryMiniAppProvider>` runs **immediately** on load (handshake must complete within 5 s).
+3. **No** connect button, login screen, `signMessage` or `signTransaction` on load.
+4. The backend verifies the launch token (signature, `iss`, `aud`, `exp`, app id) and rejects failures.
+5. The app uses the context: the person is signed in, Cherry's wallet is the wallet.
 
 ## Integration Checklist
 
-Follow these steps IN ORDER. Mark each as completed before moving to the next.
+Follow IN ORDER; mark each step done before the next.
 
-### Step 1: Discovery — Understand the Target App
+### Step 1: Discovery
 
-Research the codebase to answer:
+Find out (read the code; ask only what you can't determine):
 
-1. **Framework**: React? Vue? Vanilla? Next.js? Vite?
-2. **Solana SDK**: `@solana/web3.js` (legacy) or `@solana/kit` (modern)?
-3. **Wallet integration**: wallet-adapter? custom? Which wallets?
-4. **UI elements to hide in embed**: What should NOT appear inside Cherry?
-   - Wallet connect button (Cherry provides the wallet)
-   - App header/navigation bar (Cherry has its own)
-   - Footer, sidebar, landing/splash screen
-5. **Entry point**: Where does the app mount? (`main.tsx`, `App.tsx`)
-6. **Build system**: Vite? Webpack?
+1. Framework / bundler (React, Next.js, Vue, vanilla; Vite, webpack).
+2. Solana library: `@solana/web3.js` (+ wallet-adapter) or `@solana/kit`.
+3. Current auth: cookies? wallet-signature login? Privy? Where is the session checked?
+4. Backend language (Node / Python / Go / none) and where requests are authorized.
+5. Hosting (Vercel, Netlify, nginx, Express…) — where response headers are set.
+6. UI to hide inside Cherry: wallet connect button/modal, login screen, header/nav, footer, landing page.
+7. The mini-app id (developer portal) and, if monetizing, the chosen fee model and the Cherry treasury address (portal). Never invent a treasury address.
 
-ASK THE USER:
-```
-When this app runs inside Cherry, which UI elements should be hidden?
-Common choices:
-- Wallet connect button/modal
-- Top navigation/header
-- Footer
-- Sidebar
-- Landing/splash screen
-
-Which Solana SDK does this project use?
-- @solana/web3.js (with wallet-adapter)
-- @solana/kit (modern)
-```
-
-### Step 2: Install SDK
+### Step 2: Install
 
 ```bash
 npm install @cherrydotfun/miniapp-sdk
+npm install @solana/web3.js @solana/wallet-adapter-base   # web3.js apps
+npm install @solana/kit                                    # kit apps
 ```
 
-Install peer deps based on Solana SDK choice:
+### Step 3: Hosting headers (README §9)
 
-```bash
-# For @solana/web3.js projects
-npm install @solana/wallet-adapter-base @solana/web3.js
-
-# For @solana/kit projects — no additional deps needed
-```
-
-### Step 2b: Server Configuration — CORS & CSP (Web iframe only)
-
-> Skip if the mini-app will only be embedded in Cherry **mobile** (WebView). Required for Cherry **web** (iframe).
-
-The browser blocks iframes and API calls unless the mini-app's server explicitly allows them.
-
-#### Allow Cherry to embed the app (`frame-ancestors`)
-
-Add to **every HTML response** from the mini-app's server:
+Add to every HTML response:
 
 ```
-Content-Security-Policy: frame-ancestors 'self' https://chat.cherry.fun
+Content-Security-Policy: frame-ancestors https://chat.cherry.fun https://cherry.fun https://*.cherry.fun
 ```
 
-Make sure there is **no** `X-Frame-Options: DENY` or `X-Frame-Options: SAMEORIGIN` without override (these silently block the iframe in Chrome/Firefox).
+- Merge into an existing CSP header instead of adding a second one.
+- Remove `X-Frame-Options` (disable `helmet`'s `frameguard`, platform defaults).
+- Next.js `headers()`, Express middleware, nginx `add_header … always`,
+  `vercel.json` and `_headers` examples are in README §9.
 
-Framework-specific examples:
-
-```ts
-// Next.js — next.config.ts
-async headers() {
-  return [{
-    source: '/(.*)',
-    headers: [{ key: 'Content-Security-Policy', value: "frame-ancestors 'self' https://chat.cherry.fun" }],
-  }];
-}
-```
-
-```ts
-// Express
-app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://chat.cherry.fun");
-  next();
-});
-```
-
-```nginx
-# Nginx
-add_header Content-Security-Policy "frame-ancestors 'self' https://chat.cherry.fun" always;
-```
-
-#### Backend API CORS
-
-Usually **no changes needed** — the iframe runs on the mini-app's own origin, so API calls are same-origin. Only act if:
-
-- The backend has an explicit `Origin` allowlist → make sure `https://yourgame.example` is in it
-- The backend checks `Referer` for CSRF protection → verify iframe requests still pass
-
-#### Checklist
-
-| | Requirement |
-|---|---|
-| ✅ | `frame-ancestors … https://chat.cherry.fun` on all HTML responses |
-| ✅ | No `X-Frame-Options: DENY/SAMEORIGIN` without override |
-| ✅ | Backend `Origin` allowlist includes the mini-app's own domain |
-
-### Step 3: Environment Detection — Conditional Rendering
-
-Add environment detection at the TOP of the component tree, BEFORE any provider:
+### Step 4: Environment detection & conditional UI (README §4)
 
 ```tsx
-import { isInsideCherry, getCherryEnvironment } from '@cherrydotfun/miniapp-sdk';
-
-const embedded = isInsideCherry();
-const { platform } = getCherryEnvironment();
-// platform: 'webview' (mobile) | 'iframe' (web) | 'standalone'
-```
-
-React hook (no provider needed):
-```tsx
-import { useCherryEnvironment } from '@cherrydotfun/miniapp-sdk/react';
-
-function App() {
-  const { isEmbedded, platform } = useCherryEnvironment();
-}
-```
-
-**Strict mode** — opt in once all Cherry hosts your users run inject `window.__cherry` (WebView) or append `cherry_embed=1` (iframe). Prevents false positives in wallet in-app browsers:
-
-```tsx
-// All detection APIs accept { strict: true }
-isInsideCherry({ strict: true });
-const { isEmbedded } = useCherryEnvironment({ strict: true });
-<CherryMiniAppProvider strict={true}>...</CherryMiniAppProvider>
-new CherryMiniApp({ strict: true });
-```
-
-Without strict mode, fallbacks (`ReactNativeWebView`, `window.parent !== window`) are active for backward compatibility with older Cherry builds.
-
-### Step 4a: Wallet — @solana/web3.js Path
-
-For projects using `@solana/wallet-adapter-react`:
-
-```tsx
-import { CherryWalletAdapter } from '@cherrydotfun/miniapp-sdk/solana';
 import { isInsideCherry } from '@cherrydotfun/miniapp-sdk';
-
-function getWallets() {
-  if (isInsideCherry()) {
-    return [new CherryWalletAdapter()];
-  }
-  return [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
-}
-
-const wallets = useMemo(() => getWallets(), []);
-const embedded = isInsideCherry();
-
-<WalletProvider wallets={wallets} autoConnect={embedded}>
-  {embedded ? <AutoSelectCherry>{children}</AutoSelectCherry> : children}
-</WalletProvider>
+const embedded = isInsideCherry(); // synchronous; call at module load / before routing
 ```
 
-Auto-select helper:
-```tsx
-function AutoSelectCherry({ children }: { children: ReactNode }) {
-  const { select, wallets } = useWallet();
-  useEffect(() => {
-    const cherry = wallets.find(w => w.adapter.name === 'Cherry');
-    if (cherry) select(cherry.adapter.name);
-  }, [wallets, select]);
-  return <>{children}</>;
-}
-```
+- React: `useCherryEnvironment()` (no provider needed) → `{ isEmbedded, platform }`.
+- Hide standalone-only UI (`if (isEmbedded) return null`) — especially wallet connect and login.
+- Don't let the router strip `?cherry_embed=1`.
+- `{ strict: true }` disables fallback heuristics (only Cherry-injected signals).
 
-### Step 4b: Wallet — @solana/kit Path
+### Step 5: Provider / client (README §3)
 
-For projects using `@solana/kit`:
-
-```tsx
-import { CherryMiniApp } from '@cherrydotfun/miniapp-sdk';
-import { createCherrySigner } from '@cherrydotfun/miniapp-sdk/kit';
-
-const cherry = new CherryMiniApp();
-await cherry.init();
-
-// TransactionSigner — use with @solana/kit transaction builders
-const signer = createCherrySigner(cherry);
-
-// Sign transactions
-const [signed] = await signer.signTransactions([{ messageBytes, signatures: {} }]);
-
-// Sign messages
-const [signature] = await signer.signMessages([messageBytes]);
-```
-
-With React:
-```tsx
-import { CherryMiniAppProvider, useCherryApp } from '@cherrydotfun/miniapp-sdk/react';
-import { createCherrySigner } from '@cherrydotfun/miniapp-sdk/kit';
-
-function MyComponent() {
-  const app = useCherryApp();
-
-  const handleSign = async () => {
-    const signer = createCherrySigner(app);
-    const [signed] = await signer.signTransactions([{ messageBytes, signatures: {} }]);
-  };
-}
-```
-
-### Step 5: Cherry Provider — User & Room Context
-
-Wrap the embedded app with `CherryMiniAppProvider`:
+React:
 
 ```tsx
 import { CherryMiniAppProvider } from '@cherrydotfun/miniapp-sdk/react';
-
-function Root() {
-  const embedded = isInsideCherry();
-
-  if (embedded) {
-    return (
-      <CherryMiniAppProvider>
-        <App />
-      </CherryMiniAppProvider>
-    );
-  }
-
-  return <App />; // standalone mode
-}
+root.render(embedded ? <CherryMiniAppProvider><App /></CherryMiniAppProvider> : <StandaloneApp />);
 ```
 
-Access context in components:
-```tsx
-import { useCherryMiniApp, useCherryWallet } from '@cherrydotfun/miniapp-sdk/react';
+Vanilla: `const cherry = new CherryMiniApp(); await cherry.init();` — first thing on load.
 
-function GameUI() {
-  const { user, room, launchToken, isReady } = useCherryMiniApp();
-  const { publicKey, signTransaction, signAllTransactions, signMessage } = useCherryWallet();
-}
-```
+Staging / non-production Cherry hosts must be added explicitly:
+`trustedOrigins: ['https://staging.example.com']` (provider prop, client option,
+`CherryWalletAdapter` config). The SDK ignores bridge messages from any other
+origin and posts only to the locked host origin.
 
-### Step 6: Hide Standalone-Only UI
+### Step 6: Seamless auth (README §5)
 
-```tsx
-function Header() {
-  const { isEmbedded } = useCherryEnvironment();
-  if (isEmbedded) return null;
-  return <nav>...</nav>;
-}
-
-function WalletButton() {
-  const { isEmbedded } = useCherryEnvironment();
-  if (isEmbedded) return null;
-  return <WalletMultiButton />;
-}
-```
-
-### Step 7: Navigation — Cherry Host Integration
-
-```tsx
-import { useCherryNavigate } from '@cherrydotfun/miniapp-sdk/react';
-
-function UserList() {
-  const navigate = useCherryNavigate();
-  const { isEmbedded } = useCherryEnvironment();
-
-  const handleUserClick = (address: string) => {
-    if (isEmbedded) {
-      navigate.userProfile(address); // wallet, domain, or @handle
-    } else {
-      router.push(`/profile/${address}`);
-    }
-  };
-}
-```
-
-### Step 7b: Sharing Results (Optional)
-
-Let the user share a read-only "result" snapshot from your app into a DM or
-group as an inline blink card. Only available inside Cherry.
-
-```tsx
-import { useCherryShare, useCherryEnvironment } from '@cherrydotfun/miniapp-sdk/react';
-
-function ShareResult({ score }: { score: number }) {
-  const share = useCherryShare();
-  const { isEmbedded } = useCherryEnvironment();
-  if (!isEmbedded) return null; // host-only feature
-
-  const onShare = async () => {
-    const res = await share({
-      route: '/result',
-      params: { score },              // ≤ 4 KB JSON, depth ≤ 8; rendered read-only
-      caption: `I scored ${score}!`,
-    });
-    if (res.shared) {
-      // res.messageId — unique id of the created blink message; record it to
-      // correlate later (e.g. bind backend state to this blink).
-    }
-  };
-
-  return <button onClick={onShare}>Share result</button>;
-}
-```
-
-Notes:
-- The app can only share **itself** — the host derives the mini-app identity
-  from the session token; you only control `route`/`params`/`height`/`caption`.
-- Shared blinks are **read-only** (no callback buttons). Put the data to render
-  in `params`.
-- Requires the `inline:render` permission on the mini-app.
-
-### Step 8: Backend Token Verification (Optional)
+Client — exchange the launch token once for the app's own session:
 
 ```ts
-import { verifyLaunchToken } from '@cherrydotfun/miniapp-sdk';
-
-const payload = await verifyLaunchToken(token, {
-  expectedAppId: 'your-app-id',
-  // jwksUrl defaults to https://chat.cherry.fun/.well-known/jwks.json
-});
-// payload.sub — verified wallet address
-
-// For inline / blink launch tokens, the payload also carries (all optional):
-//   payload.message_id  — unique id of the blink message (stable per-message key)
-//   payload.params      — signed snapshot data
-//   payload.route, payload.mini_app_id, payload.interactive, payload.source
-// The token is in the launch URL query (`/inline?token=...`), so you can verify
-// it and render the blink server-side (SSR) — binding state by `message_id`
-// before the client mounts. Keep snapshot data inside the signed token's
-// `params`; never trust unsigned query fields.
+const { launchToken } = useCherryMiniApp();       // or cherry.launchToken after init()
+const res = await fetch(`${API}/auth/cherry`, { method: 'POST', headers: { Authorization: `Bearer ${launchToken}` } });
+const { session } = await res.json();             // keep in memory; send as Authorization header
 ```
 
-### Step 9: Verify Integration
+- Do NOT rely on cookies set inside the iframe (third-party cookies are blocked). Use headers.
+- Do NOT add a "sign message to log in" step inside Cherry.
 
-Test both modes:
+Backend — verify (Node):
 
-**Standalone:**
-- App works normally with standard wallets
-- No Cherry-specific UI appears
+```ts
+import { verifyLaunchToken, LaunchTokenError } from '@cherrydotfun/miniapp-sdk';
 
-**Embedded (in Cherry):**
-- Wallet auto-connects
-- User/room context available
-- signTransaction/signMessage work
-- Hidden UI elements don't appear
-- Navigation opens Cherry screens
+const claims = await verifyLaunchToken(token, { appId: process.env.CHERRY_APP_ID! });
+// throws LaunchTokenError (code: TOKEN_EXPIRED | ISSUER_MISMATCH | AUDIENCE_MISMATCH | APP_ID_MISMATCH | SIGNATURE_INVALID | JWKS_UNAVAILABLE | …)
+const userKey = claims.cherry_id ?? claims.sub;   // stable person id, else wallet
+```
 
-**Web iframe specifically:**
-- App loads inside Cherry web (not blocked by `X-Frame-Options` / CSP)
-- Browser DevTools show no `Refused to frame` errors
-- API calls from within the iframe succeed (check Network tab for CORS errors)
+Options: `appId` (required; `expectedAppId` is the deprecated 0.1.21 name),
+`issuer?` (default `https://chat.cherry.fun`), `jwksUrl?`, `jwks?`, `origin?`,
+`requireAudience?` (default false during the `aud` rollout), `scope?`
+(`'launch' | 'inline' | 'fullscreen'`), `clockTolerance?` (default 30 s).
+
+Python (PyJWT), Go (golang-jwt + keyfunc) and plain `jose` versions are in
+README §5 — copy them verbatim. Required checks in any language: RS256 via
+the JWKS `https://chat.cherry.fun/.well-known/jwks.json`, `iss`, `exp`,
+`aud` = app id when present, `app_id` or `mini_app_id` = app id.
+
+Never authorize on client-provided context (`cherry.user`, `cherry.context`,
+addresses in request bodies) — only on verified claims.
+
+Privy apps: `loginWithCustomAccessToken(cherry.launchToken)` with Cherry
+configured as a custom auth provider (README §5, "Privy").
+
+### Step 7: Wallet (README §7)
+
+**web3.js / wallet-adapter**: inside Cherry offer only `new CherryWalletAdapter()`,
+`autoConnect`, auto-select it, hide `WalletMultiButton`:
+
+```tsx
+const wallets = useMemo(() => (embedded ? [new CherryWalletAdapter()] : [new PhantomWalletAdapter()]), []);
+<WalletProvider wallets={wallets} autoConnect={embedded}>…</WalletProvider>
+// + select(CherryWalletAdapterName) once (see README §3.2)
+```
+
+**kit**: `const signer = createCherrySigner(cherry)` after init; build with
+`setTransactionMessageFeePayer(address(signer.address), m)`, then
+`compileTransaction(message)` → `signer.signTransactions([compiled])` →
+`getBase64EncodedWireTransaction(...)` (README §3.3). Don't route the Cherry
+signer through `signTransactionMessageWithSigners`.
+
+**Vanilla/React hooks**: `cherry.wallet.*` / `useCherryWallet()`.
+
+Every transaction: fee payer = the Cherry wallet (`wallet.publicKey` /
+adapter `publicKey` / `signer.address`), a fresh blockhash, real instructions.
+Permissions: `wallet:sign` (sign), `wallet:send` (sign & send) — check
+`cherry.hasPermission(...)`.
+
+### Step 8: Error & policy handling (README §8)
+
+```ts
+import { getBridgeError } from '@cherrydotfun/miniapp-sdk';
+
+catch (err) {
+  const e = getBridgeError(err);                       // unwraps wallet-adapter errors
+  if (e?.code === 'USER_REJECTED') return;             // silent
+  if (e?.code === 'POLICY_DENIED') return show(e.policyCode, e.policy, e.reason);
+  if (e?.code === 'PRECHECK_UNAVAILABLE') return show('retry later');
+  show(e?.message ?? String(err));
+}
+```
+
+- `POLICY_DENIED` → `err.policyCode`: `TX_LIMIT`, `DAILY_LIMIT`,
+  `FORBIDDEN_INSTRUCTION`, `APP_PAUSED`, `SIMULATION_FAILED`,
+  `PRICE_UNAVAILABLE`; numbers in `err.policy` (`perTxLimitUsd`,
+  `dailyUsedUsd`, `dailyLimitUsd`, `outflowUsd`, `tier`). Copy the
+  user-facing messages from README §8.
+- Tier limits: **unverified** $50 per transaction and $50 per wallet per app
+  per day, no token Approve/delegation, SetAuthority, Assign, durable-nonce
+  transactions or subscriptions; **verified** $5,000 / $25,000; **partner**
+  none. Read `cherry.tier`. `signMessage` is not prechecked.
+- Design unverified-tier flows so a single payment is ≤ $50.
+
+### Step 9: Attribution & monetization (README §13)
+
+Add the app reference key (`sha256("cherry:app:" + appId)`, read-only,
+non-signer) to ONE instruction you control in every transaction:
+
+```ts
+import { withAppReference, buildCherryFeeSplit } from '@cherrydotfun/miniapp-sdk/solana'; // or '/kit'
+tx.add(withAppReference(SystemProgram.transfer({ fromPubkey, toPubkey, lamports }), APP_ID));
+```
+
+- Never append it to DEX/aggregator instructions (they read trailing accounts).
+- Fee model A (Cherry Pay split, 30%): build payments with
+  `buildCherryFeeSplit({ payer, developer, treasury, amount /* bigint base units */, mint?, decimals?, appId })`
+  — synchronous, returns instructions; treasury from the portal.
+- Model B (referral, Cherry takes 30% of the referral fee) and model D
+  (25 bps of confirmed volume, prepaid): reference key on every transaction.
+
+### Step 10: Navigation, sharing, blinks (optional)
+
+- `useCherryNavigate().userProfile('alice.sol')`, `.openRoom('@group')` (needs `navigate:profile` / `navigate:room`; the SDK handles host aliases).
+- `useCherryShare()({ route, params, caption })` → share a read-only result card.
+- Rendering as a blink (inline card): follow `BLINKS.md` — render from `cherry.blink.params`, no `wallet.connect`, no `signAndSendTransaction`, SSR with `verifyLaunchToken(token, { appId, scope: 'inline' })`.
+
+### Step 11: Verify (README §14)
+
+Standalone:
+- [ ] App works as before with its own wallet connect/login.
+
+Inside Cherry (web and mobile):
+- [ ] Loads in the iframe (no `Refused to frame` in DevTools).
+- [ ] No connect/login/sign prompt on load; handshake completes immediately.
+- [ ] Backend accepts the real launch token and rejects a tampered/expired one.
+- [ ] Transactions sign; fee payer is the Cherry wallet; reference key present.
+- [ ] `POLICY_DENIED` shows a sensible message (try a > $50 payment on an unverified app).
+- [ ] No auth cookies inside the iframe; API calls use the Authorization header.
 
 ## Common Mistakes
 
 | Mistake | Fix |
-|---------|-----|
-| Using `Buffer` in browser code | Use `btoa()`/`atob()` or SDK helpers |
-| `require()` in ESM context | Use top-level `import` |
-| Importing `CherryWalletAdapter` from root | Use `from '@cherrydotfun/miniapp-sdk/solana'` |
-| Checking `isInsideCherry()` after async init | Call synchronously at module load |
-| Not auto-selecting Cherry wallet | Add `AutoSelectCherry` component |
-| Showing wallet connect in embed | Wrap with `if (!isEmbedded)` |
-| App doesn't load in Cherry web (iframe) | Missing `frame-ancestors https://chat.cherry.fun` CSP header |
-| `X-Frame-Options: SAMEORIGIN` blocks embed | Remove or override with CSP `frame-ancestors` |
-| `isInsideCherry()` false in Cherry web | Cherry web adds `cherry_embed=1` to URL — verify the param reaches the app; check if SPA strips query params |
-| False positive in wallet in-app browser | Enable strict mode: `isInsideCherry({ strict: true })` |
-
-## Privy Integration — Transparent Login
-
-For miniapps using Privy for authentication and embedded wallets, Cherry launch tokens can be used as a **custom auth provider** in Privy. This gives users a zero-click login experience inside Cherry, with standard Privy login (email/social/wallet) as fallback in standalone mode.
-
-### Prerequisites
-
-- Privy account with app created at [console.privy.io](https://console.privy.io)
-- Cherry miniapp registered with `wallet:connect` permission
-
-### Step 1: Configure Privy Dashboard
-
-In Privy Dashboard → Settings → Custom Auth:
-1. Add a new provider
-2. **JWKS URL**: `https://chat.cherry.fun/.well-known/jwks.json`
-3. **Issuer**: `https://chat.cherry.fun`
-4. **User ID field**: `sub` (this maps to the user's Solana wallet address)
-
-### Step 2: Dual-Mode Login
-
-```tsx
-import { CherryMiniAppProvider, useCherryApp, useCherryEnvironment } from '@cherrydotfun/miniapp-sdk/react';
-import { usePrivy } from '@privy-io/react-auth';
-
-function AuthGate({ children }: { children: ReactNode }) {
-  const { isEmbedded } = useCherryEnvironment();
-  const cherry = useCherryApp();
-  const { loginWithCustomAccessToken, authenticated, ready } = usePrivy();
-
-  useEffect(() => {
-    if (!ready || authenticated) return;
-
-    if (isEmbedded && cherry?.launchToken) {
-      // Inside Cherry — transparent login via launch token
-      loginWithCustomAccessToken(cherry.launchToken);
-    }
-    // Outside Cherry — Privy shows standard login UI
-  }, [ready, authenticated, isEmbedded, cherry]);
-
-  if (!ready) return <Loading />;
-  if (!authenticated && !isEmbedded) return <PrivyLoginButton />;
-  if (!authenticated) return <Loading />; // waiting for custom auth
-
-  return <>{children}</>;
-}
-```
-
-### Step 3: Provider Setup
-
-```tsx
-import { PrivyProvider } from '@privy-io/react-auth';
-import { CherryMiniAppProvider } from '@cherrydotfun/miniapp-sdk/react';
-import { isInsideCherry } from '@cherrydotfun/miniapp-sdk';
-
-const embedded = isInsideCherry();
-
-function App() {
-  return (
-    <PrivyProvider
-      appId="your-privy-app-id"
-      config={{
-        embeddedWallets: {
-          solana: { createOnLogin: 'all-users' },
-          showWalletUIs: !embedded, // hide wallet UI inside Cherry
-        },
-      }}
-    >
-      {embedded ? (
-        <CherryMiniAppProvider>
-          <AuthGate><YourApp /></AuthGate>
-        </CherryMiniAppProvider>
-      ) : (
-        <AuthGate><YourApp /></AuthGate>
-      )}
-    </PrivyProvider>
-  );
-}
-```
-
-### How It Works
-
-| Environment | Login Method | User Action |
-|-------------|-------------|-------------|
-| Inside Cherry (WebView/iframe) | `loginWithCustomAccessToken(launchToken)` | None — automatic |
-| Standalone (browser) | Standard Privy UI (email, social, wallet) | User clicks login |
-
-- Cherry launch token JWT contains `sub` (wallet address), `iss` (cherry.fun), signed RS256
-- Privy validates token against Cherry JWKS endpoint
-- Privy creates or finds user by `sub` claim
-- Embedded wallet auto-provisioned if user is new
-- Same user recognized across both login methods (wallet address match)
-
-### Important Notes
-
-- Cherry launch token TTL is 5 minutes — Privy must validate it promptly after injection
-- The `sub` claim contains the Solana wallet address, not a Privy DID
-- Privy embedded wallet is separate from the Cherry host wallet — choose which to use for transactions
-- For wallet operations, you can use either:
-  - Cherry wallet (via `useCherryWallet()`) — signs through Cherry host
-  - Privy embedded wallet — signs locally via Privy iframe
-- If using Cherry wallet for signing, you don't need Privy embedded wallets at all — Privy becomes auth-only
+|---|---|
+| Wallet connect button / login screen inside Cherry | Hide when `isEmbedded`; use the launch token |
+| "Sign this message to log in" | Remove inside Cherry — verify the launch token on the backend |
+| Trusting `cherry.user.publicKey` sent from the client | Authorize only on `verifyLaunchToken` claims |
+| `verifyLaunchToken(token, { appId })` with the wrong id | Use the mini-app id from the developer portal |
+| Not checking `iss`/`aud`/`exp` in a non-Node backend | Copy the README §5 Python/Go code |
+| Session cookie set inside the iframe | Third-party cookies are blocked — use an Authorization header |
+| Two CSP headers, or `X-Frame-Options: SAMEORIGIN` | One CSP with `frame-ancestors …`; no XFO |
+| `init()` deferred until assets load | Call it first; the listing test expects the handshake within 5 s |
+| Hard-coded treasury address | Take it from the developer portal |
+| Reference key appended to a Jupiter/DEX instruction | Append to your own transfer/fee instruction |
+| `cherry:init not received` on a staging host | Add the host to `trustedOrigins` |
+| `Buffer` in browser code | Use `Uint8Array` / `btoa` / `atob` |
+| Importing `CherryWalletAdapter` from the root entry | `@cherrydotfun/miniapp-sdk/solana` |
 
 ## Lifecycle Events
 
-```tsx
-cherry.on('suspended', () => { /* user left chat — pause game */ });
-cherry.on('resumed', () => { /* user came back — resume */ });
-cherry.on('walletDisconnected', () => { /* handle gracefully */ });
+```ts
+cherry.on('suspended', () => { /* user left — pause */ });
+cherry.on('resumed', () => { /* resume */ });
+cherry.on('walletDisconnected', () => { /* read-only mode */ });
+cherry.on('blink:update', ({ params }) => render(params)); // inline blinks
 ```

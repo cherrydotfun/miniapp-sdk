@@ -112,9 +112,10 @@ If `inline:render` is missing, sending/sharing fails with
 `MINIAPP_INLINE_NOT_ALLOWED`. If you send `interactive: false` without
 `inline:eager`, it fails with `BLINK_EAGER_NOT_ALLOWED`.
 
-> Mini-app registration (manifest, `allowedOrigins`, icon, permissions) is done
-> via the Cherry app/admin flow — ask your Cherry contact if you don't have a
-> `miniAppId` yet.
+> Mini-app registration (manifest, `allowedOrigins`, icon, permissions) is
+> self-serve in the Cherry developer portal; your `miniAppId` is shown there.
+> The hosting requirements (HTTPS, `frame-ancestors`) from the
+> [README §9](./README.md#9-hosting--framing-requirements) apply to blinks too.
 
 ---
 
@@ -369,9 +370,16 @@ viewer wallet is delivered automatically**; you must **not** call
 ```ts
 const { signMessage, signTransaction } = useCherryWallet();
 const pubkey = cherry.wallet.publicKey;   // = the viewer's wallet (from host.init)
+cherry.paymentWallet;                     // the viewer's payment wallet, when the host reports one
 ```
 
-The same wallet APIs from the [README](./README.md#quick-start--solanaweb3js)
+The same tier limits and policy checks as fullscreen apply
+([README §8](./README.md#8-errors-wallet-limits--policy-codes)) — handle
+`POLICY_DENIED` (`err.policyCode`). `signAndSendTransaction` is not available
+inline; sign with `signTransaction` and submit yourself, or
+`host.requestExpand` to the fullscreen app.
+
+The same wallet APIs from the [README](./README.md#7-wallet)
 work: `signMessage`, `signTransaction`, `signAllTransactions`,
 `signAndSendTransaction`, and the `@solana/kit` `createCherrySigner`.
 
@@ -431,7 +439,7 @@ The host opens a recipient picker; on send you get the new `messageId`. The
 shared blink is **read-only** (`interactive: false`, `source: 'user_share'`) —
 no callbacks. The mini-app identity is taken from the current session (a
 mini-app can only share **itself**). See the README's
-[Sharing Results](./README.md#sharing-results-blinks) section.
+[Sharing Results](./README.md#12-sharing--blinks) section.
 
 ---
 
@@ -488,7 +496,8 @@ import { verifyLaunchToken } from '@cherrydotfun/miniapp-sdk';
 // GET /inline?token=...
 app.get('/inline', async (req, res) => {
   const payload = await verifyLaunchToken(String(req.query.token), {
-    expectedAppId: 'your-app-id',
+    appId: process.env.CHERRY_APP_ID!, // your mini-app id — matched against aud / mini_app_id
+    scope: 'inline',                   // only accept blink tokens on this route
   });
   const messageId = payload.message_id;   // stable per-blink key
   const params = payload.params ?? {};     // signed snapshot
@@ -496,9 +505,12 @@ app.get('/inline', async (req, res) => {
 });
 ```
 
-`payload` (inline tokens) carries `message_id`, `mini_app_id`, `route`,
-`params`, `height`, `initial_height` (px the card opens at, if pinned),
-`interactive`, `source`, plus `sub` (viewer) and `room_id`.
+`payload` (inline tokens) carries `message_id`, `mini_app_id` (your app),
+`app_id` (the bot that sent it, if any), `route`, `params`, `height`,
+`initial_height` (px the card opens at, if pinned), `interactive`, `source`,
+`sender`, `room_id`, `tier` and (rolling out) `aud`. It names **no viewer** —
+the token is minted once per message for the whole room; the viewer arrives
+via `host.init` on the client.
 **Keep snapshot data inside the signed token's `params`** — never trust unsigned
 query fields. See [`example/server.ts`](./example/server.ts) for a runnable
 endpoint.
@@ -511,12 +523,16 @@ endpoint.
 
 `host.init`, `host.resize`, `host.callback`, `host.share`,
 `host.requestExpand`, `wallet.signMessage`, `wallet.signTransaction`,
-`wallet.signTransactions`, `navigate.userProfile`, `navigate.openRoom`.
+`wallet.signTransactions`, `navigate.profile`, `navigate.room`.
+
+`cherry.navigate.userProfile()` / `openRoom()` send the canonical
+`navigate.userProfile` / `navigate.openRoom` and automatically retry with
+`navigate.profile` / `navigate.room` when an inline host rejects them.
 
 ### Blocked inline (allowed only fullscreen)
 
-`host.close`, `wallet.connect`, `wallet.disconnect` → respond
-`METHOD_NOT_ALLOWED_IN_INLINE`. The viewer wallet is delivered via `host.init`;
+`host.close`, `wallet.connect`, `wallet.disconnect`,
+`wallet.signAndSendTransaction` → respond `METHOD_NOT_ALLOWED_IN_INLINE`. The viewer wallet is delivered via `host.init`;
 never try to connect inside a blink.
 
 ### Lifecycle limits
@@ -565,6 +581,8 @@ Enforced server-side when a blink is sent/shared (`BlinkValidationService`):
 | **`MINIAPP_INLINE_NOT_ALLOWED` when sending** | Mini-app manifest lacks `inline:render`. |
 | **`wallet.connect` does nothing** | It's blocked inline by design. Use `cherry.wallet.publicKey` (the viewer wallet from `host.init`). |
 | **State lost when scrolling away and back** | Expected — blinks unmount off-screen. Re-render from `params`/`messageId`; don't keep state in memory. |
+| **`host.init` never answers / `init()` hangs in a blink on a staging host** | The SDK only trusts `https://chat.cherry.fun`, `https://cherry.fun`, `https://*.cherry.fun`. Pass `trustedOrigins` for other hosts ([README §10](./README.md#10-bridge-security--trusted-origins)). |
+| **SSR: `APP_ID_MISMATCH` on bot blinks** | SDK ≤ 0.1.21 compared only `app_id` (the bot's id on bot-sent blinks). 0.1.22 also matches `mini_app_id` — upgrade and pass your mini-app id as `appId`. |
 
 ---
 
@@ -582,5 +600,8 @@ Enforced server-side when a blink is sent/shared (`BlinkValidationService`):
 - [ ] Wallet: never `wallet.connect`; use `cherry.wallet.publicKey`; transactions
       have a **fresh blockhash** + **fee-payer = viewer**.
 - [ ] No durable in-memory state — survive unmount/remount.
-- [ ] (Optional) SSR via `verifyLaunchToken`, bind state by `message_id`.
+- [ ] (Optional) SSR via `verifyLaunchToken(token, { appId, scope: 'inline' })`,
+      bind state by `message_id`.
+- [ ] Transactions carry your app reference key (`withAppReference`) and stay
+      within your tier's limits.
 ```

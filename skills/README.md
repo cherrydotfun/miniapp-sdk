@@ -8,11 +8,13 @@ AI-powered integration assistant for `@cherrydotfun/miniapp-sdk`.
 
 Guides you through integrating the Cherry Mini-App SDK into any existing web3 application. The skill:
 
-1. Discovers your app's structure (framework, wallet setup, UI components)
-2. Asks what to hide when running inside Cherry
-3. Walks through SDK installation and configuration step by step
+1. Discovers your app's structure (framework, wallet setup, auth, backend, hosting)
+2. Sets the framing headers Cherry needs (`frame-ancestors`)
+3. Replaces connect/login flows with Cherry's seamless auth and verifies the launch token on your backend (Node, Python, Go)
 4. Sets up conditional rendering for embedded vs standalone modes
-5. Configures wallet adapter, navigation, and token verification
+5. Wires the Cherry wallet, wallet-limit/policy error handling, navigation and sharing
+6. Adds the app reference key and, if you use Cherry Pay, the fee split
+7. Walks through the listing-test checklist
 
 ## Installation
 

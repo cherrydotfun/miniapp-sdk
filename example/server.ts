@@ -9,7 +9,7 @@
  */
 
 import { createServer } from 'node:http';
-import * as jose from 'jose';
+import { verifyLaunchToken, type LaunchTokenPayload } from '@cherrydotfun/miniapp-sdk';
 
 const PORT = parseInt(process.env.PORT || '3456', 10);
 const APP_ID = process.env.APP_ID || 'example-app';
@@ -21,7 +21,13 @@ function log(label: string, data: unknown) {
   console.log(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
 }
 
-const jwks = jose.createRemoteJWKSet(new URL(JWKS_URL));
+/**
+ * Signature (RS256, Cherry JWKS), exp/nbf, iss, aud (when present), and that
+ * the token names this app (app_id or mini_app_id). Throws on any failure.
+ */
+function verify(token: string): Promise<LaunchTokenPayload> {
+  return verifyLaunchToken(token, { appId: APP_ID, jwksUrl: JWKS_URL });
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -65,16 +71,13 @@ const server = createServer(async (req, res) => {
     log('Received token', token.slice(0, 60) + '...');
 
     try {
-      const { payload } = await jose.jwtVerify(token, jwks, {
-        algorithms: ['RS256'],
-      });
-
-      if (payload.app_id !== APP_ID) {
-        throw new Error(`Token app_id mismatch: expected ${APP_ID}, got ${payload.app_id}`);
-      }
+      const payload = await verify(token);
 
       log('Token VERIFIED', {
         wallet: payload.sub,
+        cherryId: payload.cherry_id,
+        paymentWallet: payload.payment_wallet,
+        tier: payload.tier,
         appId: payload.app_id,
         roomId: payload.room_id,
         origin: payload.origin,
@@ -111,12 +114,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     try {
-      const { payload } = await jose.jwtVerify(token, jwks, {
-        algorithms: ['RS256'],
-      });
-      if (payload.app_id !== APP_ID) {
-        throw new Error(`app_id mismatch: ${String(payload.app_id)}`);
-      }
+      const payload = await verify(token);
 
       const messageId = String(payload.message_id ?? '');
       const route = String(payload.route ?? '/');

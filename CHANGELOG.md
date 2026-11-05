@@ -1,0 +1,84 @@
+# Changelog
+
+All notable changes to `@cherrydotfun/miniapp-sdk`. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
+[SemVer](https://semver.org/) (0.x: minor = may break, patch = compatible).
+
+## 0.1.22
+
+Secure-by-default release for self-serve listing. No breaking API changes —
+see the [migration notes](./README.md#19-migration-0121--0122) for behaviour
+changes.
+
+### Security
+
+- **Bridge origin checks (iframe).** Host messages are accepted only from
+  `window.parent` on a trusted Cherry origin (`https://chat.cherry.fun`,
+  `https://cherry.fun`, `https://*.cherry.fun`, plus opt-in `trustedOrigins`;
+  `'*'` is refused). The first valid host message locks the origin; it is the
+  `targetOrigin` of everything the SDK posts afterwards (previously `'*'`).
+  Requests sent before the lock are queued; only the data-free inline
+  `host.init` handshake goes out with `'*'`.
+- **Bridge source checks (WebView).** Only host-injected events are accepted,
+  not messages from frames inside the mini-app.
+- **`verifyLaunchToken` checks `iss`, `aud` and `exp`.** Adds issuer
+  verification (default `https://chat.cherry.fun`), audience verification
+  (`aud` must name your app when present; `requireAudience` to require it),
+  a required `exp` with 30 s clock tolerance, and optional `scope` matching.
+
+### Added
+
+- `verifyLaunchToken(token, { appId, issuer?, jwksUrl?, jwks?, origin?, requireAudience?, scope?, clockTolerance? })`
+  and `LaunchTokenError` with machine-readable `code`s.
+- Launch-token claim types: `aud`, `iss`, `nbf`, `tier`, `cherry_id`,
+  `payment_wallet`, `payment_wallet_kind`, `payment_wallet_set_by`,
+  `permissions`, `reach`; types `CherryAppTier`, `CherryReach`,
+  `PaymentWalletKind`, `PaymentWalletSetBy`, `LaunchTokenScope`.
+- `CherryMiniApp#context` (`CherryContext`) and getters `appId`, `cherryId`,
+  `paymentWallet`, `paymentWalletKind`, `paymentWalletSetBy`, `permissions`,
+  `hasPermission()`, `reach`, `tier`, `mode`, `claims`. React:
+  `useCherryContext()` and `context` on `useCherryMiniApp()`.
+- `BridgeError#data` (the host's `data`, raw), `#policyCode` (from
+  `data.code` on `POLICY_DENIED`), `#reason`, `#policy` (`CherryPolicyDenial`);
+  `getBridgeError()`, `isPolicyDenied()`; types `BridgeErrorCode`,
+  `CherryPolicyCode`.
+- On-chain attribution: `getAppReferenceKeyBytes`, `getAppReferenceAddress`
+  (core), `getAppReferenceKey`, `withAppReference` (`/solana`, `/kit`).
+- Cherry fee split: `buildCherryFeeSplit` (`/solana`, `/kit`; SOL and
+  SPL/Token-2022 with idempotent ATA creation), `splitCherryFee`, and
+  `CHERRY_PAY_FEE_BPS`, `CHERRY_REFERRAL_SHARE_BPS`, `CHERRY_VOLUME_FEE_BPS`.
+- `trustedOrigins` option on `CherryMiniApp`, `CherryMiniAppProvider`,
+  `CherryWalletAdapter` and `getSharedBridge()`; `isTrustedHostOrigin()`,
+  `DEFAULT_TRUSTED_HOST_ORIGINS`; `Bridge#hostOrigin`, `#transport`,
+  `#ignoredOrigins`, `#configure()`.
+- Test suite (vitest) and `npm test`.
+- Optional peer dependency `@solana/kit` (types only, for the `/kit` helpers).
+
+### Changed
+
+- Navigation sends `navigate.userProfile` / `navigate.openRoom` and retries
+  once with `navigate.profile` / `navigate.room` when a host rejects the
+  method name (older inline hosts), remembering the name that worked.
+- `verifyLaunchToken` accepts tokens whose `mini_app_id` is your app id
+  (inline/bot launch tokens), not only `app_id`. `expectedAppId` /
+  `expectedOrigin` are deprecated aliases of `appId` / `origin`.
+- The remote JWKS is cached per URL instead of being re-created per call.
+- The SDK re-sends `cherry:ready` when the host repeats `cherry:init`.
+- `init()` timeout errors name any untrusted origin whose messages were ignored.
+- `createCherrySigner().signTransactions` accepts kit's read-only compiled
+  transactions (`compileTransaction` output) without casts.
+- `BLINKS.md` and `CHANGELOG.md` ship in the npm package.
+
+### Fixed
+
+- `strict` passed to `CherryMiniApp` / `CherryMiniAppProvider` now reaches the
+  bridge's transport detection (it was accepted but ignored).
+- A top-level page outside Cherry no longer posts bridge messages to itself.
+- The `Bridge` can be constructed during SSR (no `window`) without throwing.
+
+## 0.1.21
+
+- Blinks and `share()` accept `initialHeight` (exact first-paint height);
+  exposed as `cherry.blink.initialHeight` and the `initial_height` claim.
+
+Earlier versions: see the git history.
