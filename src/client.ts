@@ -259,6 +259,7 @@ export class CherryMiniApp {
       version: BRIDGE_VERSION,
     };
     this.bridge.sendToHost(readyMsg);
+    this.assertInitGeneration(generation);
 
     // Subscribe to host events (suspended, resumed, walletDisconnected, etc.)
     this.removeHostListener = this.bridge.startListening((message) =>

@@ -737,3 +737,10 @@ test('destroy fences a resolved inline host.init before continuation', async () 
   await expect(pending).rejects.toMatchObject({ code:'DESTROYED' });
   expect(app.isReady).toBe(false); expect(app.hostCapabilities).toEqual([]); expect(app.blink).toBeNull();
 });
+
+test('synchronous destroy during ready acknowledgement cannot revive the instance', async () => {
+  const host=installHost(); const app=new CherryMiniApp(); const receive=host.receive.bind(host);
+  host.receive=(transport,message,options)=>{receive(transport,message,options);if(message['type']==='cherry:ready') app.destroy();};
+  const pending=app.init();host.post({type:'cherry:init',version:2,token:unsignedJwt(LEGACY_EMBED_CLAIMS),capabilities:['trading-v1']});
+  await expect(pending).rejects.toMatchObject({code:'DESTROYED'});expect(app.isReady).toBe(false);expect(app.hostCapabilities).toEqual([]);
+});
