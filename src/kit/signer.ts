@@ -17,12 +17,22 @@ import { getSharedBridge } from '../bridge';
  * The returned object conforms to @solana/signers TransactionSigner interface.
  * We use structural typing — no runtime import of @solana/signers needed.
  */
+/**
+ * Bytes the signer only reads: a `Uint8Array`, or `@solana/kit`'s
+ * `ReadonlyUint8Array` (what `compileTransaction` returns).
+ */
+export type ReadonlyBytes = Pick<Uint8Array, 'length' | 'slice'> & { readonly [index: number]: number };
+
 export interface CherryTransactionSigner<TAddress extends string = string> {
   readonly address: TAddress;
+  /**
+   * Sign compiled transactions (`compileTransaction(message)` output). Returns
+   * them with Cherry's signature added under `signatures[address]`.
+   */
   signTransactions(
     transactions: ReadonlyArray<{
-      messageBytes: Uint8Array;
-      signatures: Record<string, Uint8Array | null>;
+      readonly messageBytes: ReadonlyBytes;
+      readonly signatures: Readonly<Record<string, ReadonlyBytes | null>>;
     }>,
   ): Promise<
     ReadonlyArray<{
@@ -60,7 +70,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
  * The high bit distinguishes: legacy messages always have
  * numRequiredSignatures < 0x80, so bit 7 unset → legacy.
  */
-function readNumRequiredSignatures(messageBytes: Uint8Array): number {
+function readNumRequiredSignatures(messageBytes: ReadonlyBytes): number {
   const first = messageBytes[0];
   if (first === undefined) throw new Error('Empty messageBytes');
   const isVersioned = (first & 0x80) !== 0;
@@ -84,7 +94,7 @@ function encodeCompactU16(n: number): Uint8Array {
 }
 
 /** Decode a compact-u16 starting at offset. Returns value and how many bytes were consumed. */
-function decodeCompactU16(bytes: Uint8Array, offset: number): { value: number; size: number } {
+function decodeCompactU16(bytes: ReadonlyBytes, offset: number): { value: number; size: number } {
   let value = 0;
   let size = 0;
   let shift = 0;
@@ -131,7 +141,7 @@ function decodeBase58(s: string): Uint8Array {
  * signer accounts can only come from the static keys section, never from
  * address lookup tables.
  */
-function parseSignerPubkeys(messageBytes: Uint8Array, numSigners: number): Uint8Array[] {
+function parseSignerPubkeys(messageBytes: ReadonlyBytes, numSigners: number): Uint8Array[] {
   const first = messageBytes[0];
   if (first === undefined) throw new Error('Empty messageBytes');
   const isVersioned = (first & 0x80) !== 0;
@@ -150,7 +160,7 @@ function parseSignerPubkeys(messageBytes: Uint8Array, numSigners: number): Uint8
   return signers;
 }
 
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+function bytesEqual(a: ReadonlyBytes, b: ReadonlyBytes): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
@@ -220,16 +230,16 @@ export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSign
         // "partially signed" to the wallet, which prevents re-compilation.
         // The wallet always overwrites its own slot with its real signature,
         // so the placeholder is harmless.
-        const signatureEntries: Array<[Uint8Array, Uint8Array]> = [];
+        const signatureEntries: Array<[Uint8Array, ReadonlyBytes]> = [];
         for (const [addrKey, sigValue] of Object.entries(tx.signatures)) {
           if (!sigValue) continue;
           try {
-            signatureEntries.push([decodeBase58(addrKey), sigValue as Uint8Array]);
+            signatureEntries.push([decodeBase58(addrKey), sigValue]);
           } catch {
             // Skip malformed addresses silently — they won't match anyway.
           }
         }
-        const sigSlots: Uint8Array[] = signerPubkeys.map((pk, slotIdx) => {
+        const sigSlots: ReadonlyBytes[] = signerPubkeys.map((pk, slotIdx) => {
           if (slotIdx === cherrySlot) {
             const placeholder = new Uint8Array(64);
             crypto.getRandomValues(placeholder);
@@ -275,7 +285,8 @@ export function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSign
           );
         }
         return {
-          messageBytes: transactions[i]!.messageBytes,
+          // The caller's own bytes object (a Uint8Array at runtime, also under kit's readonly type).
+          messageBytes: transactions[i]!.messageBytes as Uint8Array,
           signatures: {
             ...transactions[i]!.signatures,
             [address]: signature,

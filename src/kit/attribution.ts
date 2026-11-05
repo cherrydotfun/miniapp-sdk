@@ -7,7 +7,7 @@ import {
   type PlannedInstruction,
 } from '../attribution';
 
-/** Anything with an `address` — a kit `TransactionSigner`, e.g. `createCherrySigner(cherry)`. */
+/** Anything with an `address` — typically a kit `TransactionSigner`. */
 export interface CherryKitSignerLike {
   readonly address: string;
 }
@@ -62,9 +62,11 @@ export function withAppReference<TInstruction extends { readonly accounts?: read
 
 export interface CherryKitFeeSplitParams {
   /**
-   * Who pays. Pass the kit signer (e.g. `createCherrySigner(cherry)`) to have
-   * it attached to the instructions for `signTransactionMessageWithSigners`,
-   * or just its address.
+   * Who pays: an address, or a kit `TransactionSigner` — which is then
+   * attached to the payer's account metas (for
+   * `signTransactionMessageWithSigners`). With `createCherrySigner(cherry)`,
+   * pass `signer.address` and sign the compiled transaction with
+   * `signer.signTransactions([...])`.
    */
   payer: CherryKitSignerLike | string;
   /** The developer's receiving wallet (an owner address, not a token account). */
