@@ -1,6 +1,6 @@
 ---
 name: cherry-miniapp-integration
-description: "Use when integrating @cherrydotfun/miniapp-sdk into a web app so it runs as a Cherry mini-app (inside the Cherry messenger's web iframe and mobile WebView) — seamless login via the launch token, backend token verification, Cherry wallet signing, framing headers, wallet-limit/policy error handling, on-chain attribution (app reference key) and Cherry fee splits, and passing the automated listing test."
+description: "Use when integrating @cherrydotfun/miniapp-sdk into a web app so it runs as a Cherry mini-app (inside the Cherry messenger's web iframe and mobile WebView) — seamless login via the launch token, backend token verification, Cherry wallet signing, framing headers, wallet-limit/policy error handling, matching Cherry's language/theme/safe area, reading the user's public profile, on-chain attribution (app reference key) and Cherry fee splits, and passing the automated listing test."
 ---
 
 # Cherry Mini-App SDK Integration (v0.1.22)
@@ -25,6 +25,7 @@ in each step. Blinks: `BLINKS.md` in the same package.
 - Verifying Cherry launch tokens on a backend (Node, Python, Go)
 - Adding the app reference key / Cherry fee split to transactions
 - Preparing an app for the self-serve listing test
+- Following Cherry's language, colour scheme and safe area; showing the person's public profile
 - Upgrading from SDK 0.1.21
 
 ## Non-negotiables (the listing test checks these)
@@ -205,13 +206,52 @@ tx.add(withAppReference(SystemProgram.transfer({ fromPubkey, toPubkey, lamports 
 - Model B (referral, Cherry takes 30% of the referral fee) and model D
   (25 bps of confirmed volume, prepaid): reference key on every transaction.
 
-### Step 10: Navigation, sharing, blinks (optional)
+### Step 10: Language, theme & safe area (README §6, "Language, theme, platform & safe area")
+
+`cherry.context` carries `locale` (`en`, `ru`, `de`, `fr`, `es`, `id`, `vi`,
+`zh`, `ja`, `ko` today — treat as an open tag), `colorScheme` (`dark` | `light`),
+`brand`, `platform` (`ios` | `android` | `web`), `appVersion` and `safeArea`
+(`{ top, right, bottom, left }` CSS px, or `null` → fall back to
+`env(safe-area-inset-*)`). Per field: the host's latest context, then the URL's
+`cherry_lang` / `cherry_theme`, then the token's `locale` claim.
+
+- If the app has i18n / themes, wire them to it; don't invent languages it doesn't have (fall back to its default).
+- First paint: `readCherryDisplayContext()` (sync, from the URL; SSR: pass the request URL) — React: `useCherryDisplayContext()` (never null).
+- Live: `cherry.onContextChange(cb)` → unsubscribe; React hooks re-render by themselves.
+- `applyCherryContextToDocument(ctx)` (opt-in) sets `<html lang>`, `data-cherry-theme`, `color-scheme`. The SDK never touches the document on its own.
+
+```tsx
+const { locale, colorScheme, safeArea } = useCherryDisplayContext();
+useEffect(() => {
+  applyCherryContextToDocument({ locale, colorScheme });
+  if (locale) i18n.changeLanguage(locale.split('-')[0]);
+}, [locale, colorScheme]);
+// padding: safeArea ? safeArea.bottom : 'env(safe-area-inset-bottom)'
+```
+
+### Step 11: User profile (README §6, "User profile")
+
+- UI: `context.user` / `useCherryUser()` — the PUBLIC profile (`cherryId`,
+  `handle`, `displayName`, `avatarUrl`, `bio`, `level`, `pet`, `socials`,
+  public `wallets`, `badges`, `social` counts, `trading`), or `null` on older
+  hosts → `cherry.users.me()`.
+- Never included: hidden wallets, email/phone, keys, any private data. Don't ask the person to re-enter what the profile already has.
+- Graph: `cherry.users.get(id)`, `.followers(id, { cursor, limit ≤ 100 })`,
+  `.following(…)`, `.relationship(id)` → `{ following, followedBy }`. Errors are
+  `CherryApiError` (`UNAUTHORIZED` usually = the 5-min launch token expired —
+  read early).
+- Backend: NEVER accept a profile from the client. Verify the launch token,
+  then `GET https://chat.cherry.fun/api/miniapp/me` with
+  `Authorization: Bearer <launch token>` (same for `/users/:cherryId`,
+  `/followers`, `/following`, `/relationship`) — once, at the token exchange.
+
+### Step 12: Navigation, sharing, blinks (optional)
 
 - `useCherryNavigate().userProfile('alice.sol')`, `.openRoom('@group')` (needs `navigate:profile` / `navigate:room`; the SDK handles host aliases).
 - `useCherryShare()({ route, params, caption })` → share a read-only result card.
 - Rendering as a blink (inline card): follow `BLINKS.md` — render from `cherry.blink.params`, no `wallet.connect`, no `signAndSendTransaction`, SSR with `verifyLaunchToken(token, { appId, scope: 'inline' })`.
 
-### Step 11: Verify (README §14)
+### Step 13: Verify (README §14)
 
 Standalone:
 - [ ] App works as before with its own wallet connect/login.
@@ -223,6 +263,8 @@ Inside Cherry (web and mobile):
 - [ ] Transactions sign; fee payer is the Cherry wallet; reference key present.
 - [ ] `POLICY_DENIED` shows a sensible message (try a > $50 payment on an unverified app).
 - [ ] No auth cookies inside the iframe; API calls use the Authorization header.
+- [ ] If the app is localized/themed: it opens in Cherry's language and scheme, and follows a switch.
+- [ ] Nothing important sits under the home indicator / notch on mobile (`safeArea`).
 
 ## Common Mistakes
 
@@ -240,6 +282,9 @@ Inside Cherry (web and mobile):
 | Reference key appended to a Jupiter/DEX instruction | Append to your own transfer/fee instruction |
 | `cherry:init not received` on a staging host | Add the host to `trustedOrigins` |
 | `Buffer` in browser code | Use `Uint8Array` / `btoa` / `atob` |
+| Backend trusts `context.user` / a profile posted by the client | Verify the token; read `GET /api/miniapp/me` server-side |
+| Reading `cherry.context.locale` only once at startup | Subscribe with `onContextChange` (React hooks already re-render) |
+| Assuming `context.locale` is always one of the ten | Fall back to your default for anything you don't ship |
 | Importing `CherryWalletAdapter` from the root entry | `@cherrydotfun/miniapp-sdk/solana` |
 
 ## Lifecycle Events

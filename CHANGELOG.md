@@ -53,6 +53,38 @@ changes.
   `#ignoredOrigins`, `#configure()`.
 - Test suite (vitest) and `npm test`.
 - Optional peer dependency `@solana/kit` (types only, for the `/kit` helpers).
+- **Context v2 — language, theme, platform, safe area.** `CherryContext` gains
+  `locale`, `colorScheme` (`'dark' | 'light'`), `brand`, `platform`
+  (`'ios' | 'android' | 'web'`), `appVersion` and `safeArea`
+  (`{ top, right, bottom, left }`, CSS px). Each resolves from the host's
+  latest context (`cherry:context`, else `cherry:init.context` / the
+  `host.init` answer's `context`), then the launch URL's `cherry_lang` /
+  `cherry_theme`, then the token's `locale` claim; invalid values are dropped.
+  Types `CherryDisplayContext`, `CherryLocale`, `CherryColorScheme`,
+  `CherryHostPlatform`, `CherrySafeArea`, `CherryHostContext`,
+  `BridgeContextMessage`; `CHERRY_LOCALES`; `LaunchTokenPayload.locale`.
+- Live context updates: the host's `cherry:context` message (accepted only
+  from the locked host origin, like every host message — it never locks one
+  itself; one that arrives before `init()` is kept), and
+  `CherryMiniApp#onContextChange(listener) → unsubscribe` (called on the first
+  resolution and on every real change). The React provider follows it, so
+  `useCherryContext()` / `useCherryMiniApp().context` re-render.
+- `readCherryDisplayContext(url?)` — the display context from the launch URL,
+  before `init()` and during SSR; React `useCherryDisplayContext()` (never
+  `null`: the URL before the handshake, then the live context).
+- `applyCherryContextToDocument(context, target?)` — opt-in: `<html lang>`,
+  `data-cherry-theme` and the `color-scheme` property. Never called by the SDK.
+- **Public user profile.** `MiniAppPublicProfile` (and `MiniAppUserSummary`,
+  `MiniAppUserPage`, `MiniAppRelationship`); `CherryContext.user` from the
+  host's context (`user`, kept when an update omits it), normalised field by
+  field; React `useCherryUser()`.
+- `CherryMiniApp#users` — `me()`, `get(cherryId)`,
+  `followers(cherryId, { cursor?, limit? })`, `following(…)`,
+  `relationship(cherryId)` over the Cherry API with the launch token, at the
+  token issuer's origin only when it is a trusted Cherry origin
+  (`cherryApiOrigin()`); failures are `CherryApiError` (`code`, `status`,
+  `serverCode`).
+- `Bridge#hostContext`, `Bridge#trustedOrigins`.
 
 ### Changed
 

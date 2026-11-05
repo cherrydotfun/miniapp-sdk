@@ -218,6 +218,14 @@ It's `null` for fullscreen/standalone, populated for inline blinks:
 > blink they're equal; when someone else opens it, `viewerWallet` is that other
 > person and `sender` stays the author.
 
+**Language, theme and the viewer's profile** work in a blink exactly as
+fullscreen ([README §6](./README.md#language-theme-platform--safe-area)): the
+host puts context v2 in its `host.init` answer and sends `cherry:context` on
+changes, and `cherry_lang` / `cherry_theme` ride the card's URL for the first
+paint (and SSR). `cherry.context.locale` / `colorScheme` are the **viewer's**,
+`cherry.context.user` is the viewer's public profile, and `safeArea` is
+normally all zeros — a card in a chat does not sit under system UI.
+
 ---
 
 ## 6. Params — your blink's payload

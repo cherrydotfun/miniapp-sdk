@@ -22,7 +22,7 @@ alone.
 3. [Quick starts](#3-quick-starts) — [React](#31-react) · [@solana/web3.js](#32-solanaweb3js-wallet-adapter) · [@solana/kit](#33-solanakit) · [Vanilla JS](#34-vanilla-js)
 4. [Environment detection](#4-environment-detection)
 5. [Seamless auth & backend token verification](#5-seamless-auth--backend-token-verification)
-6. [Context reference](#6-context-reference)
+6. [Context reference](#6-context-reference) — [language, theme & safe area](#language-theme-platform--safe-area) · [user profile](#user-profile)
 7. [Wallet](#7-wallet)
 8. [Errors, wallet limits & policy codes](#8-errors-wallet-limits--policy-codes)
 9. [Hosting & framing requirements](#9-hosting--framing-requirements)
@@ -270,7 +270,8 @@ if (!isInsideCherry()) {
 
   cherry.user.displayName;                 // "alice.sol"
   cherry.room.title;                       // room the app was opened in
-  cherry.context;                          // { appId, cherryId, paymentWallet, permissions, tier, … }
+  cherry.context;                          // { appId, cherryId, paymentWallet, permissions, tier, locale, colorScheme, safeArea, user, … }
+  cherry.onContextChange((ctx) => applyTheme(ctx.colorScheme, ctx.locale)); // live: language / theme / insets
 
   try {
     const signature = await cherry.wallet.signAndSendTransaction(tx); // Transaction | VersionedTransaction | bytes | base64
@@ -507,9 +508,9 @@ zero-click login inside Cherry, normal Privy login outside.
 ## 6. Context reference
 
 After `init()` resolves, `cherry.context` (React: `useCherryContext()` or
-`useCherryMiniApp().context`) is a `CherryContext`. Each field also has its own
-getter (`cherry.cherryId`, `cherry.tier`, …); all are `null`/empty before init
-and never throw. **Display-only** — see [§5](#why-never-trust-unsigned-context).
+`useCherryMiniApp().context`) is a `CherryContext`. The launch fields also
+have their own getter (`cherry.cherryId`, `cherry.tier`, …); all are
+`null`/empty before init and never throw. **Display-only** — see [§5](#why-never-trust-unsigned-context).
 
 | `CherryContext` field | Type | Meaning |
 |---|---|---|
@@ -523,6 +524,13 @@ and never throw. **Display-only** — see [§5](#why-never-trust-unsigned-contex
 | `tier` | `'unverified' \| 'verified' \| 'partner' \| null` | Decides the wallet limits ([§8](#8-errors-wallet-limits--policy-codes)). `null` on tokens that predate it. |
 | `mode` | `'fullscreen' \| 'inline' \| 'preview'` | The surface. |
 | `hostCapabilities` | `readonly string[]` | Host features beyond permissions (e.g. `wallet-switch`). |
+| `locale` | `CherryLocale \| string \| null` | The language the person uses Cherry in — `en`, `ru`, `de`, `fr`, `es`, `id`, `vi`, `zh`, `ja`, `ko` today (`CHERRY_LOCALES`); treat it as an open BCP 47 tag. [Below](#language-theme-platform--safe-area). |
+| `colorScheme` | `'dark' \| 'light' \| null` | The scheme the host is painted in. |
+| `brand` | `string \| null` | The host's palette name (e.g. `cherry`). Informational. |
+| `platform` | `'ios' \| 'android' \| 'web' \| null` | The device the host runs on (not the bridge transport — that's `getCherryEnvironment().platform`). |
+| `appVersion` | `string \| null` | The Cherry app's version (mobile hosts). |
+| `safeArea` | `{ top, right, bottom, left } \| null` | CSS px of system UI (notch, home indicator) over your view; `null` until a host reports it. |
+| `user` | `MiniAppPublicProfile \| null` | The person's public Cherry profile, when the host sends it. [Below](#user-profile). |
 
 Also available:
 
@@ -533,6 +541,7 @@ Also available:
 | `cherry.launchToken` | The raw JWT to send to your backend. |
 | `cherry.blink` | Inline blink context (`messageId`, `params`, `viewerWallet`, …) or `null` — [BLINKS.md §5](./BLINKS.md#5-the-blink-context). |
 | `cherry.claims` | The decoded, **unverified** token claims. Debugging only. |
+| `cherry.users` | The public profile API — `me()`, `get()`, `followers()`, `following()`, `relationship()`. [Below](#user-profile). |
 
 **Launch token claims** (what `verifyLaunchToken` returns, `LaunchTokenPayload`):
 
@@ -547,11 +556,167 @@ Also available:
 | `mini_app_id` | — | your app id | |
 | `tier` | ✓ (rolling out) | ✓ (rolling out) | `unverified` \| `verified` \| `partner` |
 | `permissions`, `reach` | ✓ | — | |
+| `locale` | when known | when known | the person's Cherry language; a fallback for `context.locale` |
 | `room_id` | ✓ | ✓ | |
 | `user { display_name, avatar_url }`, `room { title, member_count }`, `origin` | ✓ | — | |
 | `scope`, `mode` | — | `inline` | `fullscreen` on bot fullscreen launches |
 | `message_id`, `route`, `params`, `height`, `initial_height`, `interactive`, `source`, `sender` | — | ✓ | see BLINKS.md |
 | `iat`, `exp`, `jti` | ✓ | ✓ | room launch: 5 min; inline: ~15 min |
+
+### Language, theme, platform & safe area
+
+Cherry tells your app how to look, so it can match the person's Cherry: the
+language, the colour scheme, the platform and how far system UI (the notch,
+the home indicator) reaches into your view.
+
+**Where each field comes from** — per field, the first source that has a valid
+value wins:
+
+1. the host's latest context — `cherry:context`, else the one in `cherry:init`
+   (fullscreen) or in the `host.init` answer (blinks);
+2. the launch URL: the hosts append `cherry_lang=<locale>&cherry_theme=<dark|light>`
+   to your URL's query string, so these two are known **before** the handshake
+   — and on your server (SSR);
+3. the launch token's `locale` claim (language only).
+
+`brand`, `platform`, `appVersion` and `safeArea` only come from the host's
+context; `null` means nobody said. Values that aren't what the contract says
+are ignored, never passed through.
+
+**First paint.** `cherry.context` is `null` until `init()`; for the first frame
+read the URL synchronously with `readCherryDisplayContext()` (pass the request
+URL during SSR). In React, `useCherryDisplayContext()` does this for you — it
+is never `null`.
+
+**Live updates.** The host sends `cherry:context` whenever the language, the
+scheme or the safe area changes while your app is open (a language switch,
+rotating the phone). `cherry.onContextChange(cb)` calls `cb(context)` on the
+first resolution and on every real change, and returns the unsubscribe
+function; the React hooks re-render on their own. The SDK accepts
+`cherry:context` only from the locked Cherry host (the origin rules of
+[§10](#10-bridge-security--trusted-origins)).
+
+**Applying it** is up to you. `applyCherryContextToDocument(context)` is an
+opt-in helper that sets `<html lang>`, a `data-cherry-theme="dark|light"`
+attribute and the `color-scheme` CSS property; the SDK never touches your
+document by itself.
+
+```tsx
+import {
+  applyCherryContextToDocument,
+  useCherryDisplayContext,
+} from '@cherrydotfun/miniapp-sdk/react';
+import { useEffect, type ReactNode } from 'react';
+import { i18n } from './i18n'; // your i18n library (i18next, lingui, …)
+
+export function CherryLook({ children }: { children: ReactNode }) {
+  // URL values before the handshake, then the live context — never null.
+  const { locale, colorScheme, safeArea } = useCherryDisplayContext();
+
+  useEffect(() => {
+    applyCherryContextToDocument({ locale, colorScheme }); // <html lang> + data-cherry-theme
+    if (locale) void i18n.changeLanguage(locale.split('-')[0]);
+  }, [locale, colorScheme]);
+
+  return (
+    <div
+      className={colorScheme === 'light' ? 'theme-light' : 'theme-dark'}
+      style={{
+        // Cherry's insets when it reports them, else the browser's own.
+        paddingTop: safeArea ? safeArea.top : 'env(safe-area-inset-top)',
+        paddingBottom: safeArea ? safeArea.bottom : 'env(safe-area-inset-bottom)',
+        paddingLeft: safeArea ? safeArea.left : 'env(safe-area-inset-left)',
+        paddingRight: safeArea ? safeArea.right : 'env(safe-area-inset-right)',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+// <CherryMiniAppProvider><CherryLook><App /></CherryLook></CherryMiniAppProvider>
+```
+
+```css
+/* With applyCherryContextToDocument, CSS can key off the attribute: */
+:root[data-cherry-theme='light'] { --bg: #fff; --fg: #111; }
+:root[data-cherry-theme='dark']  { --bg: #0a0a0f; --fg: #fff; }
+```
+
+Vanilla:
+
+```ts
+applyCherryContextToDocument(readCherryDisplayContext()); // before init — from the URL
+const cherry = new CherryMiniApp();
+cherry.onContextChange(applyCherryContextToDocument);      // init's context, then every change
+await cherry.init();
+```
+
+### User profile
+
+`context.user` (React: `useCherryUser()`) is the person's **public** Cherry
+profile — what anyone sees on their Cherry page — when the host sends it
+(`null` on older hosts; then call `cherry.users.me()`). It follows the host
+like the rest of the context.
+
+| `MiniAppPublicProfile` field | Type | |
+|---|---|---|
+| `cherryId` | `string` | Stable person id (= `context.cherryId`) |
+| `handle` | `string \| null` | `@handle` without the `@` |
+| `displayName` | `string` | |
+| `avatarUrl`, `bio`, `createdAt` | `string \| null` | `createdAt` is ISO 8601 |
+| `level` | `{ level, cp } \| null` | Cherry level and points |
+| `pet` | `{ name, species, stage, imageUrl } \| null` | |
+| `socials` | `{ provider, handle, url, verified }[]` | Linked socials the person shows |
+| `wallets` | `{ address, chain: 'solana' \| 'evm', cherryWallet, domains }[]` | **Public** wallets only |
+| `badges` | `{ id, label, iconUrl }[]` | |
+| `social` | `{ followers, following }` | Counts |
+| `trading` | `{ pnlUsd, volumeUsd, window } \| null` | `null` when not shown |
+
+**Never included:** wallets the person hid, email, phone, keys, sessions,
+balances beyond the public trading figures, or anything else that is not on
+their public page. The SDK normalises every field (lists default to `[]`,
+counts to `0`, the rest to `null`) and drops anything unknown.
+
+**The API.** `cherry.users` reads the Cherry profile API with the current
+launch token (`Authorization: Bearer`, no cookies):
+
+```ts
+const me = await cherry.users.me();                                   // GET /api/miniapp/me
+const bob = await cherry.users.get('cid_…');                          // GET /api/miniapp/users/:cherryId
+const page = await cherry.users.followers(me.cherryId, { limit: 50 }); // { items, nextCursor }
+const next = await cherry.users.following(me.cherryId, { cursor: page.nextCursor ?? undefined });
+const { following, followedBy } = await cherry.users.relationship(bob.cherryId);
+```
+
+- `followers` / `following` items are `{ cherryId, handle, displayName, avatarUrl, level }`;
+  `limit` is clamped to 1–100; pass `nextCursor` back as `cursor` until it is `null`.
+- The API origin is the token's `iss` (`https://chat.cherry.fun`), and only if
+  it is a trusted Cherry origin (the defaults or your `trustedOrigins`) — the
+  token is never sent to any other host.
+- Failures are `CherryApiError` with `code`: `NOT_READY` (before `init()`),
+  `UNTRUSTED_ISSUER`, `UNAUTHORIZED` (401 — typically an **expired** launch
+  token: 5 min for room launches, ~15 for blinks; read what you need early, or
+  rely on `context.user`), `FORBIDDEN`, `NOT_FOUND`, `RATE_LIMITED`,
+  `HTTP_ERROR`, `NETWORK_ERROR`, `INVALID_RESPONSE`; plus `status` and the
+  server's `serverCode`.
+
+**Frontend vs backend.** `context.user` and `cherry.users` are for **UI**: the
+client can be tampered with. A backend never takes a profile from the client —
+it verifies the launch token ([§5](#5-seamless-auth--backend-token-verification))
+and reads the same API itself, typically once, at the token exchange:
+
+```bash
+curl -H "Authorization: Bearer $LAUNCH_TOKEN" https://chat.cherry.fun/api/miniapp/me
+curl -H "Authorization: Bearer $LAUNCH_TOKEN" https://chat.cherry.fun/api/miniapp/users/$CHERRY_ID
+curl -H "Authorization: Bearer $LAUNCH_TOKEN" "https://chat.cherry.fun/api/miniapp/users/$CHERRY_ID/followers?limit=100&cursor=$CURSOR"
+curl -H "Authorization: Bearer $LAUNCH_TOKEN" https://chat.cherry.fun/api/miniapp/users/$CHERRY_ID/relationship
+```
+
+```ts
+// Node, inside your /auth/cherry handler, after verifyLaunchToken(token, { appId })
+const res = await fetch('https://chat.cherry.fun/api/miniapp/me', { headers: { Authorization: `Bearer ${token}` } });
+const profile = res.ok ? ((await res.json()) as MiniAppPublicProfile) : null; // type from the SDK
+```
 
 ## 7. Wallet
 
@@ -977,7 +1142,15 @@ class CherryMiniApp {
   readonly room: CherryRoom;                 // throws before init
   readonly launchToken: string;              // throws before init
   readonly blink: CherryBlinkContext | null;
-  readonly context: CherryContext | null;
+  readonly context: CherryContext | null;   // display fields + user follow the host live
+  onContextChange(listener: (context: CherryContext) => void): () => void;   // first resolution + every change
+  readonly users: {
+    me(): Promise<MiniAppPublicProfile>;
+    get(cherryId: string): Promise<MiniAppPublicProfile>;
+    followers(cherryId: string, options?: { cursor?: string; limit?: number }): Promise<MiniAppUserPage>;
+    following(cherryId: string, options?: { cursor?: string; limit?: number }): Promise<MiniAppUserPage>;
+    relationship(cherryId: string): Promise<{ following: boolean; followedBy: boolean }>;
+  };                                         // rejects with CherryApiError
   readonly appId: string | null;
   readonly cherryId: string | null;
   readonly paymentWallet: string | null;
@@ -1017,6 +1190,12 @@ type VerifyLaunchTokenOptions = {
 };
 class LaunchTokenError extends Error { readonly code: LaunchTokenErrorCode; readonly cause?: unknown }
 
+function readCherryDisplayContext(url?: string | URL): CherryDisplayContext;   // before init / SSR: cherry_lang, cherry_theme, token locale
+function applyCherryContextToDocument(context: { locale?, colorScheme? } | null, target?: Document): void;   // opt-in
+const CHERRY_LOCALES: readonly ['en', 'ru', 'de', 'fr', 'es', 'id', 'vi', 'zh', 'ja', 'ko'];
+class CherryApiError extends Error { readonly code: CherryApiErrorCode; readonly status: number | null; readonly serverCode: string | null }
+function cherryApiOrigin(token: string, trustedOrigins?: readonly string[]): string;   // the API origin a token may be sent to; throws UNTRUSTED_ISSUER
+
 function isInsideCherry(options?: { strict?: boolean }): boolean;
 function getCherryEnvironment(options?: { strict?: boolean }): { isEmbedded: boolean; platform: CherryPlatform };
 function detectPlatform(options?: { strict?: boolean }): 'webview' | 'iframe' | 'standalone';
@@ -1038,7 +1217,7 @@ const CHERRY_PAY_FEE_BPS = 3000, CHERRY_REFERRAL_SHARE_BPS = 3000, CHERRY_VOLUME
 const CHERRY_APP_REFERENCE_PREFIX = 'cherry:app:';
 
 // Advanced
-class Bridge { constructor(options?: BridgeOptions); request(method: string, params?: Record<string, unknown>): Promise<unknown>; readonly hostOrigin: string | null; readonly transport: 'webview' | 'iframe' | 'none'; readonly ignoredOrigins: readonly string[]; isTrustedOrigin(origin: string): boolean; configure(options: BridgeOptions): void; /* … */ }
+class Bridge { constructor(options?: BridgeOptions); request(method: string, params?: Record<string, unknown>): Promise<unknown>; readonly hostOrigin: string | null; readonly transport: 'webview' | 'iframe' | 'none'; readonly ignoredOrigins: readonly string[]; readonly trustedOrigins: readonly string[]; readonly hostContext: Readonly<Record<string, unknown>> | null; isTrustedOrigin(origin: string): boolean; configure(options: BridgeOptions): void; /* … */ }
 function getSharedBridge(options?: { trustedOrigins?: readonly string[]; strict?: boolean }): Bridge;
 function destroySharedBridge(): void;
 function isTrustedHostOrigin(origin: string, extra?: readonly string[]): boolean;
@@ -1047,7 +1226,12 @@ function getCherryCustomAuthConfig(cherry: CherryMiniApp): { token: string; jwks
 const CHERRY_JWKS_URL: string, CHERRY_ISSUER: string, BRIDGE_VERSION: 2;
 ```
 
-Types: `CherryContext`, `CherryLaunchMode`, `CherryAppTier`, `CherryReach`,
+Types: `CherryContext`, `CherryDisplayContext`, `CherryLocale`,
+`CherryColorScheme`, `CherryHostPlatform`, `CherrySafeArea`,
+`CherryHostContext` (the wire object), `MiniAppPublicProfile`,
+`MiniAppUserSummary`, `MiniAppUserPage`, `MiniAppRelationship`,
+`CherryApiErrorCode`, `CherryUsersApi`, `CherryUserPageOptions`,
+`CherryContextListener`, `CherryLaunchMode`, `CherryAppTier`, `CherryReach`,
 `PaymentWalletKind`, `PaymentWalletSetBy`, `LaunchTokenPayload`,
 `LaunchTokenScope`, `LaunchTokenErrorCode`, `BridgeErrorCode`,
 `CherryPolicyCode`, `CherryPolicyDenial`, `BridgeOptions`, `BridgeTransport`,
@@ -1062,7 +1246,9 @@ bridge message types.
 ```ts
 function CherryMiniAppProvider(props: { children: ReactNode; initTimeout?: number; strict?: boolean; trustedOrigins?: readonly string[] }): JSX.Element;
 function useCherryMiniApp(): { user: CherryUser | null; room: CherryRoom | null; launchToken: string | null; context: CherryContext | null; isReady: boolean; error: Error | null };
-function useCherryContext(): CherryContext | null;
+function useCherryContext(): CherryContext | null;                 // re-renders on cherry:context
+function useCherryDisplayContext(): CherryDisplayContext;           // never null: the URL before the handshake
+function useCherryUser(): MiniAppPublicProfile | null;              // context.user
 function useCherryApp(): CherryMiniApp | null;
 function useCherryWallet(): { publicKey: string | null; connected: boolean; signTransaction; signAllTransactions; signMessage; signAndSendTransaction };
 function useCherryNavigate(): CherryNavigate;
@@ -1072,7 +1258,8 @@ function useCherryEnvironment(options?: { strict?: boolean }): CherryEnvironment
 ```
 
 Re-exports `CherryMiniApp`, `verifyLaunchToken`, `LaunchTokenError`,
-`BridgeError`, `getBridgeError`, `isPolicyDenied`, the env helpers and types.
+`BridgeError`, `getBridgeError`, `isPolicyDenied`, `readCherryDisplayContext`,
+`applyCherryContextToDocument`, `CherryApiError`, the env helpers and types.
 
 ### `@cherrydotfun/miniapp-sdk/solana` (web3.js)
 
@@ -1111,8 +1298,9 @@ interface CherryKitFeeSplitParams {
 
 | Message | Direction | |
 |---|---|---|
-| `cherry:init { version, token, capabilities }` | host → app | fullscreen handshake; re-sent until acked |
+| `cherry:init { version, token, capabilities, context? }` | host → app | fullscreen handshake; re-sent until acked |
 | `cherry:ready { version }` | app → host | ack (the SDK re-acks a repeated init) |
+| `cherry:context { context }` | host → app | the full context whenever the language, scheme or safe area changes (a missing `user` keeps the last one) |
 | `cherry:request { id, method, params }` | app → host | |
 | `cherry:response { id, result \| error: { code, message, data? } }` | host → app | |
 | `cherry:event { event, payload }` | host → app | `suspended`, `resumed`, `walletDisconnected`, `blink:update`, … |
@@ -1123,6 +1311,19 @@ Methods: `wallet.connect`, `wallet.signMessage`, `wallet.signTransaction`,
 `navigate.room`), `host.share`, and inline: `host.init`, `host.resize`,
 `host.callback`, `host.requestExpand`. Raw access:
 `getSharedBridge().request('host.resize', { height: 180 })`.
+
+**Context v2** (`cherry:init.context`, `cherry:context.context`, the
+`host.init` answer's `context`):
+
+```ts
+{ v: 2, locale: string, colorScheme: 'dark' | 'light', brand: string,
+  platform: 'ios' | 'android' | 'web', appVersion?: string,
+  safeArea: { top: number, right: number, bottom: number, left: number },   // CSS px
+  user?: MiniAppPublicProfile }
+```
+
+Hosts also append `cherry_lang=<locale>&cherry_theme=<dark|light>` to the app
+URL's query string (existing parameters are kept).
 
 ## 19. Migration 0.1.21 → 0.1.22
 
@@ -1145,7 +1346,12 @@ No breaking API changes; review these behaviour changes:
    bridge transport (it was accepted but ignored before).
 4. **Navigation** retries with `navigate.profile` / `navigate.room` on hosts
    that reject the canonical names.
-5. **New**: `cherry.context` and per-field getters, `useCherryContext()`,
+5. **New**: `cherry.context` and per-field getters, `useCherryContext()`;
+   context v2 — `locale`, `colorScheme`, `brand`, `platform`, `appVersion`,
+   `safeArea` with live `cherry:context` updates (`onContextChange`,
+   `useCherryDisplayContext()`, `readCherryDisplayContext()`,
+   `applyCherryContextToDocument()`); the public profile — `context.user`,
+   `useCherryUser()`, `cherry.users`;
    `BridgeError.data/policyCode/policy/reason`, `getBridgeError`,
    `isPolicyDenied`, reference-key and fee-split helpers, `trustedOrigins`
    options, `CherryWalletAdapter` config.
