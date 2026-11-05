@@ -7,6 +7,9 @@ import type {
   CherryEnvironment,
   CherryNavigate,
   CherryBlinkContext,
+  CherryChain,
+  CherrySignTransactionOptions,
+  CherryWalletSwitchResult,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';
@@ -36,27 +39,48 @@ export function useCherryApp() {
 // ---- useCherryWallet ----
 
 export interface UseCherryWalletResult {
+  /**
+   * The payment wallet the host signs with — use it as fee payer. It can
+   * differ from `useCherryMiniApp().user.publicKey` (the identity) and updates
+   * on `'wallet.changed'`; rebuild prepared transactions when it changes.
+   */
   publicKey: string | null;
+  /** True when `publicKey` is the Cherry ID wallet (key custodied by Cherry). */
+  custodial: boolean;
   connected: boolean;
-  signTransaction(transaction: unknown): Promise<unknown>;
+  /**
+   * Sign a transaction. `options.chain` is forwarded to the SDK — Solana is the
+   * default and is never sent; an unsupported chain throws
+   * `CHAIN_NOT_SUPPORTED` locally (see `CherrySignTransactionOptions`).
+   */
+  signTransaction(
+    transaction: unknown,
+    options?: CherrySignTransactionOptions,
+  ): Promise<unknown>;
   signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
   signMessage(message: Uint8Array): Promise<Uint8Array>;
   signAndSendTransaction(transaction: unknown): Promise<string>;
+  /** See `CherryMiniApp.wallet.requestSwitch()`. */
+  requestSwitch(): Promise<CherryWalletSwitchResult>;
 }
 
 export function useCherryWallet(): UseCherryWalletResult {
-  const { app, user, isReady } = useCherryMiniAppContext();
+  const { app, user, isReady, walletPublicKey, custodial, syncWallet } = useCherryMiniAppContext();
 
   return useMemo<UseCherryWalletResult>(
     () => ({
-      publicKey: user?.publicKey ?? null,
-      connected: isReady && user !== null,
+      publicKey: walletPublicKey,
+      custodial,
+      connected: isReady && walletPublicKey !== null,
 
-      signTransaction(transaction: unknown): Promise<unknown> {
+      signTransaction(
+        transaction: unknown,
+        options?: CherrySignTransactionOptions,
+      ): Promise<unknown> {
         if (!app) {
           return Promise.reject(new Error('CherryMiniApp not initialised'));
         }
-        return app.wallet.signTransaction(transaction);
+        return app.wallet.signTransaction(transaction, options);
       },
 
       signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]> {
@@ -79,10 +103,20 @@ export function useCherryWallet(): UseCherryWalletResult {
         }
         return app.wallet.signAndSendTransaction(transaction);
       },
+
+      requestSwitch(): Promise<CherryWalletSwitchResult> {
+        if (!app) {
+          return Promise.reject(new Error('CherryMiniApp not initialised'));
+        }
+        return app.wallet.requestSwitch().then((picked) => {
+          syncWallet();
+          return picked;
+        });
+      },
     }),
-    // Rebuild only when app / user readiness changes
+    // Rebuild only when app / user readiness / payment wallet changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [app, isReady, user?.publicKey],
+    [app, isReady, user?.publicKey, walletPublicKey, custodial],
   );
 }
 

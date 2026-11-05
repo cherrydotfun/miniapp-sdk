@@ -22,6 +22,9 @@ export type {
   CherryPlatform,
   LaunchTokenPayload,
   CherryBlinkContext,
+  CherryWalletChangedEvent,
+  CherryWalletSwitchResult,
+  PaymentWalletKind,
   ShareBlinkOptions,
   ShareBlinkResult,
 } from '../types';

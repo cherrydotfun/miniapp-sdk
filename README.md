@@ -496,3 +496,90 @@ This package includes a [Claude Code / Codex skill](./skills/README.md) that aut
 ## License
 
 MIT
+
+### Multichain accounts and trading (prerelease)
+
+Check `app.hostCapabilities` after initialization. `accounts-v1` enables
+`app.accounts.list()`, which returns only accounts the host authorizes to this
+app, each with its chain ID and capabilities. `evm` enables
+`app.evm.request({ method, params })` for `eth_chainId`, `eth_accounts`,
+`eth_requestAccounts`, and `eth_sendTransaction` where the host supports them.
+The existing `app.wallet` and Solana adapters remain Solana-only; `user.publicKey`
+remains the legacy identity subject. Inline viewer identity comes from the host,
+not from the shared author's token.
+
+`trading-v1` enables `app.trade.capabilities()`, `assets()`, `holdings()`,
+`preview()`, `request()`, `get()`, `list()` and `resume()`. Discovery supplies
+chain and native asset identifiers. Pass amounts as exact base-unit integer
+strings and retain a stable `idempotencyKey` when retrying a request for a
+`reviewId`. `request()` returns an operation ID before settlement; poll `get()`
+for progress. The host owns confirmation and execution. Hosts without these
+capabilities reject the corresponding SDK methods locally.
+
+Compatibility:
+
+| SDK | Host | Behavior |
+| --- | --- | --- |
+| 0.1.x | 0.1.x host | Existing Solana wallet and wire protocol. |
+| 0.1.x | Multichain host | Existing Solana wire calls remain valid; additive capabilities and fields are ignored. |
+| Multichain prerelease | 0.1.x host | Legacy Solana calls work; new methods reject locally when capabilities are absent. |
+| Multichain prerelease | Multichain host | Use only advertised capabilities; an advertised API can still report an unavailable route. |
+
+Fullscreen identity is the launch token subject. Inline identity and payer come
+from the viewer's `host.init` context; the shared message author's token is not
+viewer identity. `user.publicKey` remains the legacy subject, while
+`wallet.publicKey` is a Solana payer or `null`. Chain-qualified accounts are
+available only through `accounts.list()` when the host grants access.
+
+For a host advertising `trading-v1`, a preview request looks like:
+
+```ts
+const review = await app.trade.preview({
+  kind: 'swap',
+  input: { chainId: 'eip155:8453', address: 'native' },
+  output: { chainId: 'eip155:8453', address: '0xTokenAddress' },
+  account: { chainId: 'eip155:8453', address: '0xPayerAddress' },
+  amount: '1000000000000000', // base units, never a floating-point value
+  slippageBps: 50,
+});
+// review contains reviewId, expiresAt, input/output/account, exact inputAmount,
+// outputAmount and minOutputAmount, provider, fees, nativeBudget and constraints.
+if (review.executionSupported !== true) throw new Error('Price-only quote');
+const operation = await app.trade.request({ reviewId: review.reviewId, idempotencyKey: 'a-stable-request-key' });
+// An operation ID identifies the request, not settlement; poll app.trade.get(operation.operationId).
+```
+
+The example addresses are placeholders: obtain actual asset and account IDs
+from discovery. A host may reject unsupported methods, signers, routes or an
+expired review; handle `BridgeError.code` rather than assuming execution.
+Operation stages are open strings so newer hosts can add states. This SDK is a
+prerelease contract; `trading-v1` must not be advertised until the host can
+perform the requested flow. Host operation data and signing credentials do not
+belong in the iframe.
+
+`executionSupported: false` or an absent value means price-only for the new
+trading flow; coordinated SDK and host upgrades provide this field. This does
+not alter the legacy Solana wallet protocol. Partial native-cost execution
+requires host review and matching global, source-chain and quote budget policies.
+
+`app.trade.discard(operationId)` asks the host to confirm cancellation of a
+proven unsigned operation. Only a server-confirmed `cancelled` response ends
+the operation; a refusal leaves its pending state intact.
+
+`sourceState` is optional server-verified source evidence. `confirmed` means
+the source transaction confirmed; it does not by itself mean the destination
+trade has settled. Continue tracking the operation's `stage` separately.
+
+The current server draft names these stages: `unknown`, `needs_review`,
+`awaiting_signature`, `executing`, `deposit_seen`, `settled`, `failed`,
+`refunded`, `cancelled`, and `incomplete`. The contract keeps `stage` open for future
+additions. Draft errors include `LAUNCH_TOKEN_REQUIRED`,
+`INVALID_TRADING_CONTEXT`, `TRADING_PERMISSION_DENIED`, `UNSUPPORTED_CHAIN`,
+`UNSUPPORTED_SIGNER`, `ROUTE_NOT_IMPLEMENTED`, `INVALID_ROUTE_KIND`,
+`REVIEW_EXPIRED`, `REVIEW_ALREADY_USED`, and `IDEMPOTENCY_CONFLICT`; underlying
+rails may add others. Server execution and host signing remain in development.
+
+For apps using the existing `payerAsSubject` / `asWallet` opt-in, the host may
+restart the iframe when the person changes payer and mint a new launch subject.
+Within one iframe `user.publicKey` remains the initial subject; CherryID, when
+provided, is the stable person identity across wallets and restarts.
