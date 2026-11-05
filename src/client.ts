@@ -833,7 +833,7 @@ function validTradeResponse(method: string, value: unknown): boolean {
   const str = (x: unknown) => typeof x === 'string' && x.length > 0 && x.length <= 4096;
   const atomic = (x: unknown) => typeof x === 'string' && /^(0|[1-9][0-9]*)$/.test(x) && x.length <= 256;
   const assetId = (x: Record<string, unknown>) => str(x['chainId']) && str(x['address']);
-  const operation = (x: unknown) => object(x) && str(x['operationId']) && str(x['stage']) && (x['recoveryReview'] === undefined || x['recoveryReview'] === 'manual_review') && (x['createdAt'] === undefined || (str(x['createdAt']) && Number.isFinite(Date.parse(x['createdAt'] as string)))) && (x['kind'] === undefined || ['buy','swap','cross-chain'].includes(String(x['kind']))) && (x['input'] === undefined || (object(x['input']) && assetId(x['input']))) && (x['output'] === undefined || (object(x['output']) && assetId(x['output']))) && (x['inputAmount'] === undefined || atomic(x['inputAmount'])) && (x['outputAmount'] === undefined || atomic(x['outputAmount']));
+  const operation = (x: unknown) => object(x) && str(x['operationId']) && str(x['stage']) && ((x['approvalRetained'] === undefined && x['approvalTxHash'] === undefined) || (x['approvalRetained'] === true && typeof x['approvalTxHash'] === 'string' && /^0x[0-9a-fA-F]{64}$/.test(x['approvalTxHash']))) && (x['sourceState'] === undefined || (typeof x['sourceState'] === 'string' && ['unknown','submitted','confirmed','failed','replaced'].includes(x['sourceState']))) && (x['recoveryReview'] === undefined || x['recoveryReview'] === 'manual_review') && (x['createdAt'] === undefined || (str(x['createdAt']) && Number.isFinite(Date.parse(x['createdAt'] as string)))) && (x['kind'] === undefined || ['buy','swap','cross-chain'].includes(String(x['kind']))) && (x['input'] === undefined || (object(x['input']) && assetId(x['input']))) && (x['output'] === undefined || (object(x['output']) && assetId(x['output']))) && (x['inputAmount'] === undefined || atomic(x['inputAmount'])) && (x['outputAmount'] === undefined || atomic(x['outputAmount']));
   const optionalString = (x: unknown) => x === undefined || str(x);
   const optionalUrl = (x: unknown) => { if (x === undefined) return true; if (typeof x !== 'string' || x.length > 4096) return false; try { return new URL(x).protocol === 'https:'; } catch { return false; } };
   const optionalFinite = (x: unknown) => x === undefined || (typeof x === 'number' && Number.isFinite(x));
@@ -856,6 +856,8 @@ function validTradeResponse(method: string, value: unknown): boolean {
 function publicTradeOperation(operation: TradeOperation): TradeOperation {
   return {
     operationId: operation.operationId, stage: operation.stage,
+    ...(operation.sourceState !== undefined ? { sourceState: operation.sourceState } : {}),
+    ...(operation.approvalRetained === true ? { approvalRetained: true, approvalTxHash: operation.approvalTxHash } : {}),
     ...(operation.recoveryReview !== undefined ? { recoveryReview: operation.recoveryReview } : {}),
     ...(operation.createdAt !== undefined ? { createdAt: operation.createdAt } : {}),
     ...(operation.kind !== undefined ? { kind: operation.kind } : {}),

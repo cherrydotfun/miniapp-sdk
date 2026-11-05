@@ -609,6 +609,23 @@ test('manual recovery status is public but cannot contain arbitrary values', asy
   await expect(app.trade.get('op')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
 });
 
+test('source status exposes only bounded server evidence', async () => {
+  const { app, host } = await fullscreen({}, { capabilities:['trading-v1'] });
+  host.answerNext('trade.get', { result:{operationId:'op',stage:'executing',sourceState:'confirmed',intent:{secret:true}} });
+  expect(await app.trade.get('op')).toEqual({operationId:'op',stage:'executing',sourceState:'confirmed'});
+  host.answerNext('trade.get', { result:{operationId:'op',stage:'executing',sourceState:'guessed'} });
+  await expect(app.trade.get('op')).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+});
+
+test('confirmed approval evidence is a bounded pair of fields', async () => {
+  const { app, host } = await fullscreen({}, { capabilities:['trading-v1'] });
+  const approvalTxHash=`0x${'ab'.repeat(32)}`;
+  host.answerNext('trade.get', { result:{operationId:'op',stage:'needs_review',approvalRetained:true,approvalTxHash} });
+  expect(await app.trade.get('op')).toEqual({operationId:'op',stage:'needs_review',approvalRetained:true,approvalTxHash});
+  host.answerNext('trade.get', { result:{operationId:'op',stage:'needs_review',approvalRetained:true,approvalTxHash:'bad'} });
+  await expect(app.trade.get('op')).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+});
+
 test('capabilities validate provider corridors without inventing them', async () => {
   const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
   const result = { version: 1, chains: [], providers: [{ id: 'p', enabled: true, corridors: [{ originChainId: 'eip155:1', destChainId: 'eip155:8453' }] }] };

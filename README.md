@@ -562,9 +562,13 @@ trading flow; coordinated SDK and host upgrades provide this field. This does
 not alter the legacy Solana wallet protocol. Partial native-cost execution
 requires host review and matching global, source-chain and quote budget policies.
 
-`app.trade.discard(operationId)` asks the host to confirm cancellation of an
-expired unsigned operation. Only a server-confirmed `cancelled` response ends
+`app.trade.discard(operationId)` asks the host to confirm cancellation of a
+proven unsigned operation. Only a server-confirmed `cancelled` response ends
 the operation; a refusal leaves its pending state intact.
+
+`sourceState` is optional server-verified source evidence. `confirmed` means
+the source transaction confirmed; it does not by itself mean the destination
+trade has settled. Continue tracking the operation's `stage` separately.
 
 The current server draft names these stages: `unknown`, `needs_review`,
 `awaiting_signature`, `executing`, `deposit_seen`, `settled`, `failed`,
