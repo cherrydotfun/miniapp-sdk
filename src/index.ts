@@ -39,6 +39,7 @@ export {
   isPolicyDenied,
   type BridgeErrorCode,
   type CherryPolicyCode,
+  type CherryPolicyDenial,
   type BridgeOptions,
   type BridgeTransport,
 } from './bridge';

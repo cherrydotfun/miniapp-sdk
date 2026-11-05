@@ -28,18 +28,54 @@ async function answer(response: Record<string, unknown>): Promise<BridgeError> {
 }
 
 describe('coded host errors', () => {
-  it('reads policyCode / reason from error.data', async () => {
+  it('reads POLICY_DENIED exactly as the hosts send it (policy code in data.code)', async () => {
+    const data = {
+      code: 'DAILY_LIMIT',
+      reason: 'Daily limit of $50 reached for unverified apps',
+      tier: 'unverified',
+      outflowUsd: 20,
+      perTxLimitUsd: 50,
+      dailyUsedUsd: 45,
+      dailyLimitUsd: 50,
+    };
     const error = await answer({
-      error: {
-        code: 'POLICY_DENIED',
-        message: 'Denied by policy',
-        data: { policyCode: 'TX_LIMIT', reason: 'Max $50 per transaction for unverified apps' },
-      },
+      error: { code: 'POLICY_DENIED', message: 'Daily limit of $50 reached for unverified apps', data },
     });
     expect(error.code).toBe('POLICY_DENIED');
-    expect(error.policyCode).toBe('TX_LIMIT');
-    expect(error.reason).toBe('Max $50 per transaction for unverified apps');
+    expect(error.policyCode).toBe('DAILY_LIMIT');
+    expect(error.reason).toBe('Daily limit of $50 reached for unverified apps');
+    expect(error.data).toEqual(data);
+    expect(error.policy).toEqual({
+      policyCode: 'DAILY_LIMIT',
+      reason: 'Daily limit of $50 reached for unverified apps',
+      tier: 'unverified',
+      outflowUsd: 20,
+      perTxLimitUsd: 50,
+      dailyUsedUsd: 45,
+      dailyLimitUsd: 50,
+    });
     expect(isPolicyDenied(error)).toBe(true);
+  });
+
+  it('reads PRECHECK_UNAVAILABLE with its status', async () => {
+    const error = await answer({ error: { code: 'PRECHECK_UNAVAILABLE', message: 'Try again', data: { status: 503 } } });
+    expect(error.code).toBe('PRECHECK_UNAVAILABLE');
+    expect(error.data).toEqual({ status: 503 });
+    expect(error.policyCode).toBeUndefined();
+    expect(error.policy).toBeNull();
+  });
+
+  it('does not read data.code as a policy code on other errors', async () => {
+    const error = await answer({ error: { code: 'WALLET_CHANGED', message: 'Rebuild', data: { code: 'X' } } });
+    expect(error.policyCode).toBeUndefined();
+  });
+
+  it('accepts an explicit data.policyCode too', async () => {
+    const error = await answer({
+      error: { code: 'POLICY_DENIED', message: 'Denied', data: { policyCode: 'TX_LIMIT', reason: 'Max $50' } },
+    });
+    expect(error.policyCode).toBe('TX_LIMIT');
+    expect(error.policy).toMatchObject({ policyCode: 'TX_LIMIT', reason: 'Max $50', outflowUsd: null });
   });
 
   it('reads policyCode / reason placed on the error object itself', async () => {
@@ -47,7 +83,7 @@ describe('coded host errors', () => {
       error: { code: 'POLICY_DENIED', message: 'Denied', policyCode: 'DAILY_LIMIT', reason: 'Daily limit' },
     });
     expect(error.policyCode).toBe('DAILY_LIMIT');
-    expect(error.data).toMatchObject({ policyCode: 'DAILY_LIMIT' });
+    expect(error.reason).toBe('Daily limit');
   });
 
   it('reads policyCode / reason sent beside the error (mobile sibling fields)', async () => {
@@ -67,8 +103,6 @@ describe('coded host errors', () => {
     const generic = await answer({ error: { code: 'BRIDGE_ERROR', message: 'Unknown method: x' } });
     expect(generic.code).toBe('BRIDGE_ERROR');
     expect(isPolicyDenied(generic)).toBe(false);
-    const precheck = await answer({ error: { code: 'PRECHECK_UNAVAILABLE', message: 'Try again' } });
-    expect(precheck.code).toBe('PRECHECK_UNAVAILABLE');
   });
 });
 

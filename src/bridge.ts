@@ -329,11 +329,35 @@ export type BridgeErrorCode =
   | 'DESTROYED'
   | 'UNKNOWN';
 
+/**
+ * The `data` of a `POLICY_DENIED` refusal, as the hosts send it:
+ * `{ code: 'POLICY_DENIED', message, data: { code: <CherryPolicyCode>, reason, tier, … } }`.
+ * USD figures are present when the rule is a limit (`TX_LIMIT`, `DAILY_LIMIT`).
+ */
+export interface CherryPolicyDenial {
+  /** Which rule refused the request (`data.code` on the wire). */
+  policyCode: CherryPolicyCode | (string & {});
+  /** Human-readable reason from the host (English). */
+  reason: string | null;
+  /** The app's tier the limits were taken from. */
+  tier: string | null;
+  /** USD value this transaction would move out of the wallet. */
+  outflowUsd: number | null;
+  /** The tier's per-transaction limit, in USD. */
+  perTxLimitUsd: number | null;
+  /** What this wallet already moved out through this app today, in USD. */
+  dailyUsedUsd: number | null;
+  /** The tier's per-wallet daily limit for this app, in USD. */
+  dailyLimitUsd: number | null;
+}
+
 /** A refusal or failure answered by the Cherry host (or the bridge itself). */
 export class BridgeError extends Error {
   /**
-   * Extra fields the host sent with the error (`policyCode`, `reason`, …).
-   * Empty object when there were none.
+   * The `data` object the host sent with the error, as sent (for
+   * `POLICY_DENIED`: `{ code, reason, tier, outflowUsd, perTxLimitUsd,
+   * dailyUsedUsd, dailyLimitUsd }`; for `PRECHECK_UNAVAILABLE`: `{ status }`).
+   * Empty object when there was none.
    */
   readonly data: Readonly<Record<string, unknown>>;
 
@@ -347,16 +371,49 @@ export class BridgeError extends Error {
     this.data = Object.freeze({ ...data });
   }
 
-  /** For `POLICY_DENIED`: which rule refused the request. */
+  /**
+   * For `POLICY_DENIED`: which rule refused the request — `TX_LIMIT`,
+   * `DAILY_LIMIT`, `FORBIDDEN_INSTRUCTION`, `APP_PAUSED`, `SIMULATION_FAILED`
+   * or `PRICE_UNAVAILABLE` (the wire's `data.code`). `undefined` otherwise.
+   *
+   * ```ts
+   * if (err.code === 'POLICY_DENIED' && err.policyCode === 'DAILY_LIMIT') { … }
+   * ```
+   */
   get policyCode(): CherryPolicyCode | (string & {}) | undefined {
-    const value = this.data['policyCode'];
-    return typeof value === 'string' ? value : undefined;
+    const explicit = this.data['policyCode'];
+    if (typeof explicit === 'string') return explicit;
+    const nested = this.data['code'];
+    return this.code === 'POLICY_DENIED' && typeof nested === 'string' ? nested : undefined;
   }
 
-  /** For `POLICY_DENIED`: a human-readable reason from the host (English). */
+  /** For `POLICY_DENIED`: the host's human-readable reason (`data.reason`, English). */
   get reason(): string | undefined {
     const value = this.data['reason'];
     return typeof value === 'string' ? value : undefined;
+  }
+
+  /** For `POLICY_DENIED`: the refusal's details, typed. `null` for any other error. */
+  get policy(): CherryPolicyDenial | null {
+    const policyCode = this.policyCode;
+    if (this.code !== 'POLICY_DENIED' || policyCode === undefined) return null;
+    const num = (key: string): number | null => {
+      const value = this.data[key];
+      return typeof value === 'number' && Number.isFinite(value) ? value : null;
+    };
+    const str = (key: string): string | null => {
+      const value = this.data[key];
+      return typeof value === 'string' ? value : null;
+    };
+    return {
+      policyCode,
+      reason: str('reason'),
+      tier: str('tier'),
+      outflowUsd: num('outflowUsd'),
+      perTxLimitUsd: num('perTxLimitUsd'),
+      dailyUsedUsd: num('dailyUsedUsd'),
+      dailyLimitUsd: num('dailyLimitUsd'),
+    };
   }
 }
 
@@ -511,16 +568,19 @@ function postToParent(message: BridgeMessage, targetOrigin: string): void {
 
 /**
  * The wire error of a `cherry:response`: a plain string (old hosts) or
- * `{ code, message, data? }`. Extra fields may sit on the error itself, in
- * its `data`, or — on the mobile host — beside `error` on the response.
+ * `{ code, message, data? }`. `data` is kept as sent; for robustness,
+ * `policyCode` / `reason` placed on the error itself or beside it on the
+ * response are copied in when `data` lacks them.
  */
 function toBridgeError(error: unknown, response: BridgeMessage): BridgeError {
   if (typeof error === 'string') return new BridgeError(error, 'UNKNOWN');
   if (!isObject(error)) return new BridgeError('Unknown error', 'UNKNOWN');
-  const { code, message, data, ...rest } = error;
-  const fields: Record<string, unknown> = { ...rest, ...(isObject(data) ? data : {}) };
+  const { code, message, data } = error;
+  const fields: Record<string, unknown> = isObject(data) ? { ...data } : {};
   for (const key of ['policyCode', 'reason'] as const) {
-    if (fields[key] === undefined && response[key] !== undefined) fields[key] = response[key];
+    if (fields[key] !== undefined) continue;
+    if (error[key] !== undefined) fields[key] = error[key];
+    else if (response[key] !== undefined) fields[key] = response[key];
   }
   return new BridgeError(
     typeof message === 'string' ? message : 'Unknown error',
