@@ -103,14 +103,7 @@ export class Bridge {
           this.pending.delete(response.id);
           clearTimeout(pending.timer);
           if (response.error) {
-            const err = response.error as unknown;
-            // Handle both string and { code, message } error formats
-            if (typeof err === 'string') {
-              pending.reject(new BridgeError(err, 'UNKNOWN'));
-            } else {
-              const coded = err as { code?: string; message?: string };
-              pending.reject(new BridgeError(coded.message ?? 'Unknown error', coded.code ?? 'UNKNOWN'));
-            }
+            pending.reject(toBridgeError(response.error as unknown, message));
           } else {
             pending.resolve(response.result);
           }
@@ -285,14 +278,108 @@ export class Bridge {
   }
 }
 
+/**
+ * Why the host refused a wallet request under `POLICY_DENIED`:
+ *  - `TX_LIMIT`              — this transaction moves more value than the app's tier allows per transaction.
+ *  - `DAILY_LIMIT`           — this wallet's outflow in this app today would exceed the tier's daily limit.
+ *  - `FORBIDDEN_INSTRUCTION` — the transaction contains an instruction the tier may not use
+ *                              (token Approve/delegation, SetAuthority, Assign, durable nonce, subscriptions).
+ *  - `APP_PAUSED`            — Cherry paused wallet access for this app.
+ *  - `SIMULATION_FAILED`     — the transaction fails in simulation (it would fail on chain).
+ *  - `PRICE_UNAVAILABLE`     — the host could not price an asset to check the limits.
+ */
+export type CherryPolicyCode =
+  | 'TX_LIMIT'
+  | 'DAILY_LIMIT'
+  | 'FORBIDDEN_INSTRUCTION'
+  | 'APP_PAUSED'
+  | 'SIMULATION_FAILED'
+  | 'PRICE_UNAVAILABLE';
+
+/**
+ * Codes a `BridgeError` can carry. Hosts may add codes; unknown ones arrive
+ * as-is (the type stays open), so always keep a default branch.
+ */
+export type BridgeErrorCode =
+  // Wallet policy (self-serve listing)
+  | 'POLICY_DENIED'
+  | 'PRECHECK_UNAVAILABLE'
+  // The person / their wallet
+  | 'USER_REJECTED'
+  | 'WALLET_CHANGED'
+  | 'WALLET_NOT_CONNECTED'
+  | 'WALLET_NOT_IN_ACCOUNT'
+  | 'WALLET_UNAVAILABLE'
+  | 'RATE_LIMITED'
+  // What the transaction / message contains
+  | 'NOT_A_SIGNER'
+  | 'DANGEROUS_INSTRUCTION'
+  | 'UNSTATED_ROLE'
+  | 'RESERVED_PAYLOAD'
+  | 'CHAIN_NOT_SUPPORTED'
+  // The method itself
+  | 'METHOD_NOT_ALLOWED_IN_INLINE'
+  | 'METHOD_NOT_FOUND'
+  | 'UNKNOWN_METHOD'
+  | 'METHOD_NOT_SUPPORTED'
+  | 'CALLBACK_NOT_SUPPORTED'
+  // Transport / generic
+  | 'BRIDGE_ERROR'
+  | 'TIMEOUT'
+  | 'DESTROYED'
+  | 'UNKNOWN';
+
+/** A refusal or failure answered by the Cherry host (or the bridge itself). */
 export class BridgeError extends Error {
+  /**
+   * Extra fields the host sent with the error (`policyCode`, `reason`, …).
+   * Empty object when there were none.
+   */
+  readonly data: Readonly<Record<string, unknown>>;
+
   constructor(
     message: string,
-    public readonly code: string,
+    public readonly code: BridgeErrorCode | (string & {}),
+    data: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = 'BridgeError';
+    this.data = Object.freeze({ ...data });
   }
+
+  /** For `POLICY_DENIED`: which rule refused the request. */
+  get policyCode(): CherryPolicyCode | (string & {}) | undefined {
+    const value = this.data['policyCode'];
+    return typeof value === 'string' ? value : undefined;
+  }
+
+  /** For `POLICY_DENIED`: a human-readable reason from the host (English). */
+  get reason(): string | undefined {
+    const value = this.data['reason'];
+    return typeof value === 'string' ? value : undefined;
+  }
+}
+
+/**
+ * The `BridgeError` behind `error`, or `null`. Unwraps the wallet-adapter
+ * error classes (`WalletSignTransactionError#error`) and `Error#cause`, so it
+ * works on whatever your signing call threw.
+ */
+export function getBridgeError(error: unknown): BridgeError | null {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current; depth++) {
+    if (current instanceof BridgeError) return current;
+    const next =
+      (current as { error?: unknown }).error ?? (current as { cause?: unknown }).cause;
+    if (next === current) break;
+    current = next;
+  }
+  return null;
+}
+
+/** True when the host refused a wallet request because of the app's tier policy. */
+export function isPolicyDenied(error: unknown): boolean {
+  return getBridgeError(error)?.code === 'POLICY_DENIED';
 }
 
 // Module-level singleton — shared between CherryMiniApp and CherryWalletAdapter
@@ -421,6 +508,26 @@ function postToParent(message: BridgeMessage, targetOrigin: string): void {
 }
 
 // ---- helpers ----
+
+/**
+ * The wire error of a `cherry:response`: a plain string (old hosts) or
+ * `{ code, message, data? }`. Extra fields may sit on the error itself, in
+ * its `data`, or — on the mobile host — beside `error` on the response.
+ */
+function toBridgeError(error: unknown, response: BridgeMessage): BridgeError {
+  if (typeof error === 'string') return new BridgeError(error, 'UNKNOWN');
+  if (!isObject(error)) return new BridgeError('Unknown error', 'UNKNOWN');
+  const { code, message, data, ...rest } = error;
+  const fields: Record<string, unknown> = { ...rest, ...(isObject(data) ? data : {}) };
+  for (const key of ['policyCode', 'reason'] as const) {
+    if (fields[key] === undefined && response[key] !== undefined) fields[key] = response[key];
+  }
+  return new BridgeError(
+    typeof message === 'string' ? message : 'Unknown error',
+    typeof code === 'string' ? code : 'UNKNOWN',
+    fields,
+  );
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

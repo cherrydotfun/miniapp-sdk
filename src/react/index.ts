@@ -36,4 +36,11 @@ export { isInsideCherry, getCherryEnvironment, detectPlatform, type DetectPlatfo
 // Re-export main client for direct use
 export { CherryMiniApp, type CherryMiniAppOptions, type CherryMiniAppEvent } from '../client';
 export { verifyLaunchToken, LaunchTokenError, type VerifyLaunchTokenOptions } from '../token';
+export {
+  BridgeError,
+  getBridgeError,
+  isPolicyDenied,
+  type BridgeErrorCode,
+  type CherryPolicyCode,
+} from '../bridge';
 export { BRIDGE_VERSION } from '../types';

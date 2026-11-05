@@ -33,6 +33,10 @@ export {
   getSharedBridge,
   destroySharedBridge,
   isTrustedHostOrigin,
+  getBridgeError,
+  isPolicyDenied,
+  type BridgeErrorCode,
+  type CherryPolicyCode,
   type BridgeOptions,
   type BridgeTransport,
 } from './bridge';
