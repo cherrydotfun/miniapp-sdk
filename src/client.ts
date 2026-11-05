@@ -152,7 +152,7 @@ export class CherryMiniApp {
       if (!validTradeResponse(method, result)) throw new BridgeError(`Invalid trade.${method} response`, 'INVALID_RESPONSE');
       // Host execution data, prepared transactions and credentials are never
       // part of the app-facing operation envelope.
-      if (method === 'request' || method === 'get' || method === 'resume' || method === 'lookup') {
+      if (method === 'request' || method === 'get' || method === 'resume' || method === 'lookup' || method === 'discard') {
         const operation = result as TradeOperation;
         return publicTradeOperation(operation) as T;
       }
@@ -183,6 +183,12 @@ export class CherryMiniApp {
       list: () => call<{ operations: TradeOperation[] }>('list'),
       lookup: (request: { reviewId: string; idempotencyKey: string }) => call<TradeOperation>('lookup', { ...request }),
       resume: (operationId: string) => call<TradeOperation>('resume', { operationId }),
+      discard: async (operationId: string) => {
+        if (!operationId) throw new BridgeError('operationId is required', 'INVALID_ARGUMENT');
+        const result = await call<TradeOperation>('discard', { operationId });
+        if (result.operationId !== operationId) throw new BridgeError('Trade operation does not match', 'INVALID_RESPONSE');
+        return result;
+      },
     };
   }
 
@@ -838,6 +844,7 @@ function validTradeResponse(method: string, value: unknown): boolean {
   switch (method) {
     case 'preview': return (value['executionSupported'] === undefined || typeof value['executionSupported'] === 'boolean') && (value['budgetPolicy'] === undefined || value['budgetPolicy'] === 'complete-required' || value['budgetPolicy'] === 'reviewed-partial') && str(value['destinationOwner']) && str(value['inputSymbol']) && str(value['outputSymbol']) && typeof value['inputDecimals'] === 'number' && Number.isInteger(value['inputDecimals']) && value['inputDecimals'] >= 0 && value['inputDecimals'] <= 30 && typeof value['outputDecimals'] === 'number' && Number.isInteger(value['outputDecimals']) && value['outputDecimals'] >= 0 && value['outputDecimals'] <= 30 && str(value['reviewId']) && atomic(value['inputAmount']) && atomic(value['outputAmount']) && atomic(value['minOutputAmount']) && str(value['provider']) && str(value['expiresAt']) && Number.isFinite(Date.parse(value['expiresAt'] as string)) && object(value['input']) && assetId(value['input']) && object(value['output']) && assetId(value['output']) && object(value['account']) && assetId(value['account']) && Array.isArray(value['fees']) && value['fees'].length <= 100 && value['fees'].every(fee) && budget(value['nativeBudget']) && object(value['constraints']) && ['buy', 'swap', 'cross-chain'].includes(String(value['constraints']['kind'])) && typeof value['constraints']['slippageBps'] === 'number' && Number.isInteger(value['constraints']['slippageBps']) && value['constraints']['slippageBps'] >= 0 && value['constraints']['slippageBps'] <= 10000;
     case 'request': case 'get': case 'resume': case 'lookup': return operation(value);
+    case 'discard': return operation(value) && value['stage'] === 'cancelled';
     case 'list': return Array.isArray(value['operations']) && value['operations'].length <= 1000 && value['operations'].every(operation);
     case 'assets': return Array.isArray(value['assets']) && value['assets'].length <= 10000 && value['assets'].every((a: unknown) => object(a) && assetId(a) && str(a['symbol']) && Number.isInteger(a['decimals']) && (a['decimals'] as number) >= 0 && (a['decimals'] as number) <= 255 && optionalString(a['name']) && optionalUrl(a['iconUrl']) && ['usdPrice','priceChange24h','marketCap','liquidity'].every(k => optionalFinite(a[k])));
     case 'holdings': return (value['unavailableChains'] === undefined || (Array.isArray(value['unavailableChains']) && value['unavailableChains'].length <= 1000 && value['unavailableChains'].every(str))) && Array.isArray(value['holdings']) && value['holdings'].length <= 10000 && value['holdings'].every((a: unknown) => object(a) && assetId(a) && atomic(a['amount']) && (a['account'] === undefined || (object(a['account']) && assetId(a['account']) && a['account']['chainId'] === a['chainId'])));

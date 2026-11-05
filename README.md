@@ -562,9 +562,13 @@ trading flow; coordinated SDK and host upgrades provide this field. This does
 not alter the legacy Solana wallet protocol. Partial native-cost execution
 requires host review and matching global, source-chain and quote budget policies.
 
+`app.trade.discard(operationId)` asks the host to confirm cancellation of an
+expired unsigned operation. Only a server-confirmed `cancelled` response ends
+the operation; a refusal leaves its pending state intact.
+
 The current server draft names these stages: `unknown`, `needs_review`,
 `awaiting_signature`, `executing`, `deposit_seen`, `settled`, `failed`,
-`refunded`, and `incomplete`. The contract keeps `stage` open for future
+`refunded`, `cancelled`, and `incomplete`. The contract keeps `stage` open for future
 additions. Draft errors include `LAUNCH_TOKEN_REQUIRED`,
 `INVALID_TRADING_CONTEXT`, `TRADING_PERMISSION_DENIED`, `UNSUPPORTED_CHAIN`,
 `UNSUPPORTED_SIGNER`, `ROUTE_NOT_IMPLEMENTED`, `INVALID_ROUTE_KIND`,

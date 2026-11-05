@@ -625,6 +625,17 @@ test('lookup is capability gated and sends only the saved idempotency and review
   expect(host.requests('trade.lookup')[0]?.['params']).toEqual({ reviewId: 'r', idempotencyKey: 'k' });
 });
 
+test('discard exposes only server-confirmed cancelled operation', async () => {
+  const { app, host } = await fullscreen({}, { capabilities:['trading-v1'] });
+  host.answerNext('trade.discard', { result:{ operationId:'op', stage:'cancelled', intent:{ private:true } } });
+  expect(await app.trade.discard('op')).toEqual({ operationId:'op',stage:'cancelled' });
+  expect(host.requests('trade.discard')[0]?.['params']).toEqual({operationId:'op'});
+  host.answerNext('trade.discard', { result:{operationId:'op',stage:'unknown'} });
+  await expect(app.trade.discard('op')).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+  host.answerNext('trade.discard', { result:{operationId:'other',stage:'cancelled'} });
+  await expect(app.trade.discard('op')).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+});
+
 test('viewer expand forwards bounded context only on a supporting host', async () => {
   const first = await fullscreen();
   await expect(Promise.resolve().then(() => first.app.requestExpand({ route:'/trade', params:{chainId:'eip155:8453'} }))).rejects.toMatchObject({ code:'METHOD_NOT_SUPPORTED' });
