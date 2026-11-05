@@ -70,3 +70,25 @@ export function fakeToken(claims: Record<string, unknown>): string {
 export function setUrl(pathAndQuery: string): void {
   window.history.replaceState({}, '', pathAndQuery);
 }
+
+/**
+ * Make the fake host answer every `cherry:request` the SDK posts with
+ * `answer(method, params)` → `{ result }` or `{ error }` (delivered async,
+ * from `origin`, as window.parent).
+ */
+export function autoRespond(
+  host: FakeParent,
+  answer: (method: string, params: Record<string, unknown> | undefined) => Record<string, unknown> | null,
+  origin = 'https://chat.cherry.fun',
+): void {
+  host.window.postMessage.mockImplementation((message: unknown, target: unknown) => {
+    const targetOrigin =
+      typeof target === 'string' ? target : String((target as { targetOrigin?: string }).targetOrigin);
+    host.posted.push({ message: message as Record<string, unknown>, targetOrigin });
+    const msg = message as { type?: string; id?: string; method?: string; params?: Record<string, unknown> };
+    if (msg.type !== 'cherry:request' || !msg.method) return;
+    const response = answer(msg.method, msg.params);
+    if (!response) return;
+    setTimeout(() => deliver({ type: 'cherry:response', id: msg.id, ...response }, { origin, source: host.window }), 0);
+  });
+}

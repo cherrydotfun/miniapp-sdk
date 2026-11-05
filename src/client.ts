@@ -1,5 +1,5 @@
 import { decodeJwt } from 'jose';
-import { Bridge, getSharedBridge, destroySharedBridge } from './bridge';
+import { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';
 import type { BridgeEvent } from './bridge';
 import {
   BRIDGE_VERSION,
@@ -473,17 +473,49 @@ export class CherryMiniApp {
 
   // ---- navigate ----
 
+  /**
+   * Open Cherry screens. Sends the canonical method (`navigate.userProfile`,
+   * `navigate.openRoom`) and, if the host rejects it as unknown — older inline
+   * hosts only know `navigate.profile` / `navigate.room`, older fullscreen
+   * hosts only the canonical names — retries once with the other name and
+   * remembers which one this host speaks.
+   */
   readonly navigate: CherryNavigate = {
     userProfile: (identifier: string): Promise<void> => {
       this.assertReady();
-      return this.bridge.request('navigate.userProfile', { identifier }) as Promise<void>;
+      return this.requestWithAlias('navigate.userProfile', { identifier });
     },
 
     openRoom: (identifier: string): Promise<void> => {
       this.assertReady();
-      return this.bridge.request('navigate.openRoom', { identifier }) as Promise<void>;
+      return this.requestWithAlias('navigate.openRoom', { identifier });
     },
   };
+
+  /** Canonical navigate methods whose alias is what this host answered. */
+  private readonly aliasPreferred = new Set<NavigateMethod>();
+
+  private async requestWithAlias(method: NavigateMethod, params: Record<string, unknown>): Promise<void> {
+    const alias = NAVIGATE_ALIASES[method];
+    const preferAlias = this.aliasPreferred.has(method);
+    const first = preferAlias ? alias : method;
+    const second = preferAlias ? method : alias;
+    try {
+      await this.bridge.request(first, params);
+      return;
+    } catch (error) {
+      if (!isMethodRejection(error)) throw error;
+      try {
+        await this.bridge.request(second, params);
+      } catch (retryError) {
+        // Both names unknown → report the first refusal; a real failure of
+        // the method the host does know is the more useful error.
+        throw isMethodRejection(retryError) ? error : retryError;
+      }
+      if (second === alias) this.aliasPreferred.add(method);
+      else this.aliasPreferred.delete(method);
+    }
+  }
 
   // ---- share ----
 
@@ -557,6 +589,34 @@ export class CherryMiniApp {
       throw new Error('CherryMiniApp is not ready. Call init() first.');
     }
   }
+}
+
+// ---- navigation helpers ----
+
+type NavigateMethod = 'navigate.userProfile' | 'navigate.openRoom';
+
+/** Canonical navigate method → the name older inline hosts use. */
+const NAVIGATE_ALIASES: Readonly<Record<NavigateMethod, string>> = Object.freeze({
+  'navigate.userProfile': 'navigate.profile',
+  'navigate.openRoom': 'navigate.room',
+});
+
+const METHOD_REJECTION_CODES: ReadonlySet<string> = new Set([
+  'METHOD_NOT_FOUND',
+  'UNKNOWN_METHOD',
+  'METHOD_NOT_SUPPORTED',
+  'METHOD_NOT_ALLOWED_IN_INLINE',
+]);
+
+/**
+ * Whether the host refused the METHOD NAME (as opposed to failing it): a
+ * method-rejection code, or the generic `Unknown method: X` text that older
+ * hosts send under `BRIDGE_ERROR`.
+ */
+function isMethodRejection(error: unknown): boolean {
+  if (!(error instanceof BridgeError)) return false;
+  if (METHOD_REJECTION_CODES.has(error.code)) return true;
+  return /^unknown method\b/i.test(error.message) || /not allowed inside an inline blink/i.test(error.message);
 }
 
 // ---- context helpers ----
