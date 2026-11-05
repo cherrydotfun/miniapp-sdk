@@ -39,7 +39,9 @@ export type CherryMiniAppEvent =
    * re-minted it) are already updated when listeners run. Rebuild any
    * transaction prepared for the previous wallet.
    */
-  | 'wallet.changed';
+  | 'wallet.changed'
+  /** Host-only hint: refetch `accounts.list()`; carries no account data. */
+  | 'accounts.changed';
 
 type EventListener<T = unknown> = (data: T) => void;
 
@@ -395,6 +397,13 @@ export class CherryMiniApp {
     // Host events carry their payload under `payload` (e.g. blink:update);
     // fall back to `data` for older/host-agnostic shapes.
     const data = (evt as { payload?: unknown }).payload ?? evt.data;
+    if (evt.event === 'accounts.changed') {
+      // Hints never carry financial state. A stale queued hint may only prompt
+      // a read of the current account set after a later init.
+      if (!this._isReady || !this._hostCapabilities.includes('accounts-v1') || !this._hostCapabilities.includes('accounts-events-v1') || !data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length !== 0) return;
+      this.emit('accounts.changed');
+      return;
+    }
     if (evt.event === 'wallet.changed') {
       this.applyWalletChanged(data);
       return;

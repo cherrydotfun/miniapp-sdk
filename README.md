@@ -501,7 +501,20 @@ MIT
 
 Check `app.hostCapabilities` after initialization. `accounts-v1` enables
 `app.accounts.list()`, which returns only accounts the host authorizes to this
-app, each with its chain ID and capabilities. `evm` enables
+app, each with its chain ID and capabilities. A host that also advertises
+`accounts-events-v1` can send an `accounts.changed` hint. The hint has no
+account data: re-read `app.accounts.list()` and invalidate any quote tied to a
+previous payer. It does not alter `app.wallet.publicKey` or the launch identity.
+Older hosts do not emit it; older SDKs ignore it. A delayed hint after re-init
+can only request a fresh read of the current account set.
+
+```ts
+if (app.hostCapabilities.includes('accounts-events-v1')) {
+  app.on('accounts.changed', () => { void refreshAccounts(); });
+}
+```
+
+`evm` enables
 `app.evm.request({ method, params })` for `eth_chainId`, `eth_accounts`,
 `eth_requestAccounts`, and `eth_sendTransaction` where the host supports them.
 The existing `app.wallet` and Solana adapters remain Solana-only; `user.publicKey`

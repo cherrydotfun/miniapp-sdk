@@ -744,3 +744,70 @@ test('synchronous destroy during ready acknowledgement cannot revive the instanc
   const pending=app.init();host.post({type:'cherry:init',version:2,token:unsignedJwt(LEGACY_EMBED_CLAIMS),capabilities:['trading-v1']});
   await expect(pending).rejects.toMatchObject({code:'DESTROYED'});expect(app.isReady).toBe(false);expect(app.hostCapabilities).toEqual([]);
 });
+
+describe('accounts.changed hint', () => {
+  test('only a trusted initialized parent origin and negotiated capability can emit an empty hint', async () => {
+    const token=unsignedJwt(LEGACY_EMBED_CLAIMS);
+    const host=installHost({transport:'iframe'}), app=new CherryMiniApp();
+    const ready=app.init();host.post({type:'cherry:init',version:2,token,capabilities:['accounts-v1','accounts-events-v1']});await ready;
+    let count=0;app.on('accounts.changed',()=>{count++;});
+    const hint={type:'cherry:event',event:'accounts.changed',payload:{}};
+    host.post(hint,{source:{}});host.post(hint,{origin:'https://evil.example'});host.post(hint,{isTrusted:false});
+    host.post({...hint,payload:{account:'forged'}});host.post(hint);
+    expect(count).toBe(1);expect(app.wallet.publicKey).toBe(SUB);expect(app.user.publicKey).toBe(SUB);
+    app.destroy();host.post(hint);expect(count).toBe(1);
+  });
+  test('inline binds hint origin to the parent host.init response; old hosts are silent', async () => {
+    const {host,app}=await inline({viewerWallet:SUB,capabilities:['accounts-v1','accounts-events-v1']});
+    let count=0;app.on('accounts.changed',()=>{count++;});
+    host.post({type:'cherry:event',event:'accounts.changed',payload:{}},{origin:'https://evil.example'});
+    host.post({type:'cherry:event',event:'accounts.changed',payload:{}});expect(count).toBe(1);
+    app.destroy();uninstallHost();
+    const old=await inline({viewerWallet:SUB,capabilities:['accounts-v1']});
+    old.app.on('accounts.changed',()=>{count++;});old.host.post({type:'cherry:event',event:'accounts.changed',payload:{}});expect(count).toBe(1);
+  });
+  test('a queued same-origin hint after reinit carries no stale state', async () => {
+    const token=unsignedJwt(LEGACY_EMBED_CLAIMS),host=installHost({transport:'iframe'}),app=new CherryMiniApp();
+    let ready=app.init();host.post({type:'cherry:init',version:2,token,capabilities:['accounts-v1','accounts-events-v1']});await ready;app.destroy();
+    ready=app.init();host.post({type:'cherry:init',version:2,token,capabilities:['accounts-v1','accounts-events-v1']});await ready;
+    let seen:unknown='not-called';app.on('accounts.changed',value=>{seen=value;});
+    host.post({type:'cherry:event',event:'accounts.changed',payload:{}});
+    expect(seen).toBeUndefined();expect(app.wallet.publicKey).toBe(SUB);
+  });
+});
+
+test('buffered fullscreen init binds only real parent source metadata', async () => {
+  const token=unsignedJwt(LEGACY_EMBED_CLAIMS),host=installHost({transport:'iframe'}),app=new CherryMiniApp();
+  host.post({type:'cherry:init',version:2,token,capabilities:['accounts-v1','accounts-events-v1']});
+  await app.init();let calls=0;app.on('accounts.changed',()=>{calls++;});host.post({type:'cherry:event',event:'accounts.changed',payload:{}});expect(calls).toBe(1);
+  app.destroy();uninstallHost();
+  const spoofHost=installHost({transport:'iframe'}),spoofApp=new CherryMiniApp();
+  spoofHost.post({type:'cherry:init',version:2,token,capabilities:['accounts-v1','accounts-events-v1']},{source:{}});
+  await spoofApp.init();spoofApp.on('accounts.changed',()=>{calls++;});
+  spoofHost.post({type:'cherry:event',event:'accounts.changed',payload:{}});expect(calls).toBe(1);
+});
+
+test.each(['wallet.accounts','trade.capabilities'])('new iframe response %s only settles from bound parent origin', async method => {
+  const host=installHost({transport:'iframe'}),app=new CherryMiniApp(),token=unsignedJwt(LEGACY_EMBED_CLAIMS);
+  const ready=app.init();host.post({type:'cherry:init',version:2,token,capabilities:['accounts-v1','trading-v1']});await ready;
+  let id='';const receive=host.receive.bind(host);host.receive=(transport,message,options)=>{if(message['method']===method) id=String(message['id']);receive(transport,message,options);};
+  let settled=false;
+  const pending=method==='wallet.accounts' ? app.accounts.list() : app.trade.capabilities();
+  void pending.then(()=>{settled=true;});
+  expect(id).not.toBe('');
+  const result=method==='wallet.accounts' ? {accounts:[]} : {version:1,chains:[],providers:[]};
+  host.post({type:'cherry:response',id,result},{source:{}});
+  host.post({type:'cherry:response',id,result},{origin:'https://evil.example'});
+  host.post({type:'cherry:response',id,result},{isTrusted:false});
+  await Promise.resolve();expect(settled).toBe(false);
+  host.post({type:'cherry:response',id,result});
+  await pending;expect(settled).toBe(true);
+});
+
+test('a spoofed buffered init cannot inherit binding from a different buffered init',async()=>{
+  const host=installHost({transport:'iframe'}),app=new CherryMiniApp(),token=unsignedJwt(LEGACY_EMBED_CLAIMS);
+  const init={type:'cherry:init',version:2,token,capabilities:['accounts-v1','accounts-events-v1']};
+  host.post(init);host.post(init,{source:{}});await app.init();
+  let hints=0;app.on('accounts.changed',()=>{hints++;});host.post({type:'cherry:event',event:'accounts.changed',payload:{}});
+  expect(hints).toBe(0);
+});
