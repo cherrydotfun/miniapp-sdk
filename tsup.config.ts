@@ -13,7 +13,7 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   splitting: false,
-  external: ['react', 'react/jsx-runtime', '@solana/wallet-adapter-base', '@solana/web3.js', '@solana/signers'],
+  external: ['react', 'react/jsx-runtime', '@solana/wallet-adapter-base', '@solana/web3.js', '@solana/signers', '@solana/kit'],
   esbuildOptions(options) {
     options.conditions = ['module'];
   },

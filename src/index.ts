@@ -56,6 +56,19 @@ export {
   type LaunchTokenScope,
 } from './token';
 
+// On-chain attribution & Cherry fee math (library-agnostic; the /solana and
+// /kit entries add instruction builders)
+export {
+  getAppReferenceKeyBytes,
+  getAppReferenceAddress,
+  splitCherryFee,
+  CHERRY_APP_REFERENCE_PREFIX,
+  CHERRY_PAY_FEE_BPS,
+  CHERRY_REFERRAL_SHARE_BPS,
+  CHERRY_VOLUME_FEE_BPS,
+  type CherryFeeSplitAmounts,
+} from './attribution';
+
 // Custom auth helpers (Privy, etc.)
 export {
   getCherryCustomAuthConfig,
