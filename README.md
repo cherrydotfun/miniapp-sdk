@@ -544,6 +544,7 @@ const review = await app.trade.preview({
 });
 // review contains reviewId, expiresAt, input/output/account, exact inputAmount,
 // outputAmount and minOutputAmount, provider, fees, nativeBudget and constraints.
+if (review.executionSupported !== true) throw new Error('Price-only quote');
 const operation = await app.trade.request({ reviewId: review.reviewId, idempotencyKey: 'a-stable-request-key' });
 // An operation ID identifies the request, not settlement; poll app.trade.get(operation.operationId).
 ```
@@ -555,6 +556,11 @@ Operation stages are open strings so newer hosts can add states. This SDK is a
 prerelease contract; `trading-v1` must not be advertised until the host can
 perform the requested flow. Host operation data and signing credentials do not
 belong in the iframe.
+
+`executionSupported: false` or an absent value means price-only for the new
+trading flow; coordinated SDK and host upgrades provide this field. This does
+not alter the legacy Solana wallet protocol. Partial native-cost execution
+requires host review and matching global, source-chain and quote budget policies.
 
 The current server draft names these stages: `unknown`, `needs_review`,
 `awaiting_signature`, `executing`, `deposit_seen`, `settled`, `failed`,

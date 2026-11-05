@@ -568,9 +568,11 @@ test('preview accepts only bounded server route budget policy', async () => {
   const { app, host } = await fullscreen({}, { capabilities: ['trading-v1'] });
   const input = { chainId:'solana:mainnet', address:'native' }, output = { chainId:'eip155:1', address:'token' }, account = { chainId:'solana:mainnet', address:'payer' };
   const request = { kind:'cross-chain' as const, input, output, account, amount:'10', slippageBps:50 };
-  const result = { reviewId:'r', inputAmount:'10', outputAmount:'9', minOutputAmount:'8', provider:'p', expiresAt:'2099-01-01T00:00:00Z', destinationOwner:'payer', inputSymbol:'SOL', outputSymbol:'T', inputDecimals:9, outputDecimals:6, input, output, account, fees:[], nativeBudget:null, constraints:{kind:'cross-chain',slippageBps:50}, budgetPolicy:'reviewed-partial' };
+  const result = { reviewId:'r', inputAmount:'10', outputAmount:'9', minOutputAmount:'8', provider:'p', expiresAt:'2099-01-01T00:00:00Z', destinationOwner:'payer', inputSymbol:'SOL', outputSymbol:'T', inputDecimals:9, outputDecimals:6, input, output, account, fees:[], nativeBudget:null, constraints:{kind:'cross-chain',slippageBps:50}, budgetPolicy:'reviewed-partial', executionSupported:false };
   host.answerNext('trade.preview', { result });
   expect((await app.trade.preview(request)).budgetPolicy).toBe('reviewed-partial');
+  host.answerNext('trade.preview', { result:{ ...result, executionSupported:'yes' } });
+  await expect(app.trade.preview(request)).rejects.toMatchObject({ code:'INVALID_RESPONSE' });
   host.answerNext('trade.preview', { result: { ...result, budgetPolicy:'automatic' } });
   await expect(app.trade.preview(request)).rejects.toMatchObject({ code:'INVALID_RESPONSE' });
 });
