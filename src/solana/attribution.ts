@@ -51,7 +51,7 @@ export interface CherryFeeSplitParams {
   /** Cherry's share in basis points. Default `3000` (30%, the Cherry Pay rate). */
   cherryBps?: number;
   /** Token program of `mint`. Default the SPL Token program; pass Token-2022's id for Token-2022 mints. */
-  tokenProgramId?: PublicKeyLike;
+  tokenProgram?: PublicKeyLike;
   /**
    * Prepend idempotent associated-token-account creation for the developer
    * and treasury (SPL only). Default `true`; the payer funds rent if one is
@@ -85,7 +85,7 @@ export function buildCherryFeeSplit(params: CherryFeeSplitParams): TransactionIn
     mint: params.mint === undefined ? undefined : toBase58(params.mint),
     decimals: params.decimals,
     cherryBps: params.cherryBps,
-    tokenProgram: params.tokenProgramId === undefined ? undefined : toBase58(params.tokenProgramId),
+    tokenProgram: params.tokenProgram === undefined ? undefined : toBase58(params.tokenProgram),
     createAssociatedTokenAccounts: params.createAssociatedTokenAccounts,
     appId: params.appId,
   }).map(toTransactionInstruction);

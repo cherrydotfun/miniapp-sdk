@@ -291,7 +291,7 @@ describe('buildCherryFeeSplit (web3.js)', () => {
       amount: 100n,
       mint: USDC,
       decimals: 6,
-      tokenProgramId: TOKEN_2022_PROGRAM_ADDRESS,
+      tokenProgram: TOKEN_2022_PROGRAM_ADDRESS,
       createAssociatedTokenAccounts: false,
     });
     expect(ixs).toHaveLength(2);
