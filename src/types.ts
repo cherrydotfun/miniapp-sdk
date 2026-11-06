@@ -179,7 +179,7 @@ export interface CherryEnvironment {
  * host enforces (see the README, "Wallet limits & policy errors"):
  * `unverified` — self-serve listing, $50 per transaction and per wallet per
  * day, risky instructions refused; `verified` — $1,000 per transaction,
- * $5,000 per day; `partner` — no SDK-side limits.
+ * $5,000 per day, the same instructions refused; `partner` — no SDK-side limits.
  */
 export type CherryAppTier = 'unverified' | 'verified' | 'partner';
 

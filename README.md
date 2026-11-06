@@ -804,7 +804,7 @@ The host checks every **transaction** request (`signTransaction`,
 | Tier | Per transaction | Per wallet, per app, per day | Forbidden instructions |
 |---|---|---|---|
 | `unverified` (self-serve listing) | **$50** outflow | **$50** outflow | token `Approve` / delegation, `SetAuthority`, `Assign`, durable-nonce transactions, subscriptions |
-| `verified` | $1,000 | $5,000 | — |
+| `verified` | $1,000 | $5,000 | the same as `unverified` |
 | `partner` | no limit | no limit | — |
 
 Read your tier from `cherry.tier` (display) or the verified `tier` claim
