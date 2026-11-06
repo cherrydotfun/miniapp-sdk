@@ -1,10 +1,6 @@
 import { decodeJwt } from 'jose';
 import { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';
 import type { CherryTransactionOptions } from './label';
-
-/** The `label` param of a sign request, when the caller gave one. */
-const labelParam = (options?: CherryTransactionOptions): { label?: string } =>
-  options?.label !== undefined ? { label: options.label } : {};
 import type { BridgeEvent } from './bridge';
 import {
   CHERRY_LANG_PARAM,
@@ -34,6 +30,10 @@ import {
   type ShareBlinkOptions,
   type ShareBlinkResult,
 } from './types';
+
+/** The `label` param of a sign request, when the caller gave one. */
+const labelParam = (options?: CherryTransactionOptions): { label?: string } =>
+  options?.label !== undefined ? { label: options.label } : {};
 
 export type CherryMiniAppEvent =
   | 'suspended'

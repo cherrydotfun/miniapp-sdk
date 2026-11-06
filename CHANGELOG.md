@@ -4,6 +4,19 @@ All notable changes to `@cherrydotfun/miniapp-sdk`. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/) (0.x: minor = may break, patch = compatible).
 
+## 0.1.23
+
+### Fixed
+
+- **`withTransactionLabel` works across entries.** Each entry (root, `/react`,
+  `/solana`, `/kit`) is bundled with its own copy of the label code, so a
+  label set through one entry was not seen by a signer imported from another
+  (e.g. `withTransactionLabel` from the root around `CherryWalletAdapter`
+  from `/solana`). The scope now lives on `globalThis`.
+- **Stricter label cleaning.** Format characters (zero-width joiners, bidi
+  marks, tag characters), Hangul fillers and piles of combining marks are
+  removed, so a label cannot hide, reorder or overflow what it says.
+
 ## 0.1.22
 
 Secure-by-default release for self-serve listing. No breaking API changes —

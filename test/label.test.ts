@@ -71,6 +71,12 @@ describe('normalizeTransactionLabel', () => {
     expect(cut.endsWith('…')).toBe(true);
   });
 
+  it('drops zero-width, tag and filler characters and flattens piles of combining marks', () => {
+    expect(normalizeTransactionLabel('Buy\u200b\u200d 3\u061c lives\u{E0041}')).toBe('Buy 3 lives');
+    expect(normalizeTransactionLabel('\u3164\u3164')).toBeUndefined();
+    expect(normalizeTransactionLabel(`a${'\u0301'.repeat(200)}b`)).toBe(`a${'\u0301'.repeat(2)}b`);
+  });
+
   it('drops what is not a non-empty string', () => {
     expect(normalizeTransactionLabel('   ')).toBeUndefined();
     expect(normalizeTransactionLabel(42)).toBeUndefined();
@@ -128,6 +134,19 @@ describe('labels on the wire', () => {
       await cherry.wallet.signTransaction(TX);
     });
     expect(seen.map((s) => s['label'])).toEqual(['Inner', 'Explicit', 'Outer']);
+  });
+
+  it('keeps the scope on globalThis, so every bundled entry of the package shares it', async () => {
+    const shared = (globalThis as unknown as Record<symbol, { active: { label: string }[] }>)[
+      Symbol.for('cherry.miniapp-sdk.txLabel')
+    ];
+    await withTransactionLabel('Seen everywhere', async () => {
+      const scope = (globalThis as unknown as Record<symbol, { active: { label: string }[] }>)[
+        Symbol.for('cherry.miniapp-sdk.txLabel')
+      ];
+      expect(scope?.active[scope.active.length - 1]?.label).toBe('Seen everywhere');
+      if (shared) expect(scope).toBe(shared);
+    });
   });
 
   it('detaches the label when the wrapped call throws', async () => {

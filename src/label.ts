@@ -38,10 +38,12 @@ export interface CherryTransactionOptions {
   label?: string;
 }
 
-// Control characters and line breaks would let a label draw a fake second
-// line in the sheet; bidi overrides could reorder what it says.
-// eslint-disable-next-line no-control-regex
-const UNPRINTABLE = /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g;
+// Control and format characters (line breaks, bidi marks and overrides,
+// zero-width joiners, tag characters) could draw a fake second line or
+// reorder or hide what the label says; Hangul fillers render as blank; a pile
+// of combining marks overflows the line.
+const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115F\u1160\u3164\uFFA0]/gu;
+const MARK_PILE = /(\p{M}{2})\p{M}+/gu;
 
 /**
  * The label as a host will show it: one line, trimmed, at most
@@ -50,15 +52,27 @@ const UNPRINTABLE = /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g;
  */
 export function normalizeTransactionLabel(label: unknown): string | undefined {
   if (typeof label !== 'string') return undefined;
-  const clean = label.replace(UNPRINTABLE, ' ').replace(/\s+/g, ' ').trim();
+  const clean = label.replace(UNPRINTABLE, ' ').replace(MARK_PILE, '$1').replace(/\s+/g, ' ').trim();
   if (!clean) return undefined;
   const chars = Array.from(clean);
   if (chars.length <= TRANSACTION_LABEL_MAX) return clean;
   return `${chars.slice(0, TRANSACTION_LABEL_MAX - 1).join('').trimEnd()}…`;
 }
 
-const active: { id: number; label: string }[] = [];
-let lastId = 0;
+/**
+ * The labels in force, shared through `globalThis`: each package entry (root,
+ * /react, /solana, /kit) is bundled with its own copy of this module, and a
+ * label set through one entry must reach a signer imported from another.
+ */
+interface LabelScope {
+  active: { id: number; label: string }[];
+  lastId: number;
+}
+const SCOPE_KEY = Symbol.for('cherry.miniapp-sdk.txLabel');
+function scope(): LabelScope {
+  const g = globalThis as unknown as Record<symbol, LabelScope | undefined>;
+  return (g[SCOPE_KEY] ??= { active: [], lastId: 0 });
+}
 
 /**
  * Runs `fn` with `label` attached to every signature request it makes, and
@@ -71,19 +85,21 @@ let lastId = 0;
 export async function withTransactionLabel<T>(label: string, fn: () => Promise<T> | T): Promise<T> {
   const clean = normalizeTransactionLabel(label);
   if (!clean) return fn();
-  const id = ++lastId;
-  active.push({ id, label: clean });
+  const labels = scope();
+  const id = ++labels.lastId;
+  labels.active.push({ id, label: clean });
   try {
     return await fn();
   } finally {
-    const index = active.findIndex((entry) => entry.id === id);
-    if (index >= 0) active.splice(index, 1);
+    const index = labels.active.findIndex((entry) => entry.id === id);
+    if (index >= 0) labels.active.splice(index, 1);
   }
 }
 
 /** The label a request to `method` should carry right now, if any. */
 export function currentTransactionLabel(method: string): string | undefined {
   if (!LABELLED_METHODS.has(method)) return undefined;
+  const { active } = scope();
   return active[active.length - 1]?.label;
 }
 
