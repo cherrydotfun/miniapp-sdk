@@ -29,8 +29,11 @@ export const CHERRY_APP_REFERENCE_PREFIX = 'cherry:app:';
  * The 32 bytes of your app's reference key: `sha256("cherry:app:" + appId)`
  * (UTF-8). Added as a read-only, non-signer account to one instruction of
  * every transaction, it makes the transaction attributable to your app
- * on-chain (Solana Pay "reference" style) — that is how Cherry measures fee
- * models B and D, and how you can find your own transactions.
+ * on-chain (Solana Pay "reference" style): your volume and fees become visible
+ * on public dashboards such as Dune, and you can find your own transactions.
+ * It is attribution only — Cherry does not bill from it (volume fees are
+ * metered by the host's own transaction check), so leaving it out never
+ * lowers a fee.
  */
 export function getAppReferenceKeyBytes(appId: string): Uint8Array {
   if (typeof appId !== 'string' || appId.length === 0) {

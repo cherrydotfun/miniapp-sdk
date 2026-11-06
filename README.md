@@ -984,8 +984,8 @@ You choose a fee model in the developer portal:
 | Model | How Cherry earns | What you build |
 |---|---|---|
 | **A — Cherry Pay split** | **30%** of each payment, paid to the Cherry treasury **inside the same transaction** | `buildCherryFeeSplit(...)` for every payment |
-| **B — Protocol referral fees** (e.g. Jupiter referral) | **30% of the referral fee** you earn through Cherry | Your referral account on the protocol + the reference key on every transaction |
-| **D — Volume metering** | **25 bps** (0.25%) of your app's confirmed volume, from a prepaid balance | The reference key on every transaction; keep the balance topped up in the portal |
+| **B — Protocol referral fees** (e.g. Jupiter referral) | **30% of the referral fee** the protocol pays; you get 70% | Pass your app's referral account (Cherry creates it; the portal shows it under Monetization) and fee on every order |
+| **D — Volume metering** | **25 bps** (0.25%) of your app's confirmed volume, from a prepaid USDC balance | Nothing for the fee itself; keep the balance topped up in the portal |
 
 Constants: `CHERRY_PAY_FEE_BPS` (3000), `CHERRY_REFERRAL_SHARE_BPS` (3000),
 `CHERRY_VOLUME_FEE_BPS` (25).
@@ -995,8 +995,10 @@ Constants: `CHERRY_PAY_FEE_BPS` (3000), `CHERRY_REFERRAL_SHARE_BPS` (3000),
 Every transaction your app produces should carry your **reference key**:
 `sha256("cherry:app:" + appId)` (UTF-8, 32 bytes) as a **read-only, non-signer**
 account appended to **one** instruction (Solana Pay "reference" style). It is
-how Cherry — and anyone on Dune — attributes revenue and volume to your app:
-query transactions whose account keys include your reference address.
+how anyone on Dune attributes revenue and volume to your app: query
+transactions whose account keys include your reference address. It is
+attribution only: Cherry does not bill from it, so leaving it out never
+lowers a fee (volume is metered by the host's own transaction check).
 
 ```ts
 import { getAppReferenceKey, withAppReference } from '@cherrydotfun/miniapp-sdk/solana'; // or '/kit'
@@ -1062,16 +1064,23 @@ attached to the instructions).
 
 ### Model B — referral fees
 
-Keep using the protocol's referral program with your referral account (e.g.
-Jupiter's platform/referral fee parameters), add the reference key to every
-transaction so the referral volume is attributable, and settle Cherry's 30%
-share as configured in the developer portal.
+Cherry creates a Jupiter referral account for your app when you publish on
+this model (the portal's Monetization page shows it, and can create it
+earlier). Pass it as `referralAccount`, with a `referralFee` of 50 to 255 bps,
+on every Jupiter order. Cherry claims the fees, keeps 30% of what it receives
+(after Jupiter's own 20%) and pays you 70% in USDC once your share reaches
+$20. A Jupiter swap that does not carry your account is billed at the volume
+rate instead, and the portal flags it.
 
 ### Model D — volume metering
 
-Add the reference key to every transaction; Cherry meters 25 bps of the
-confirmed (successful, on-chain) volume of transactions attributed to your app
-against your prepaid balance in the portal.
+No code for the fee itself. Cherry meters 25 bps of the value that leaves
+your users' wallets in your app's finalized transactions, as the host priced
+it before they signed, and charges it daily (UTC) from your prepaid USDC
+balance. Top up from the portal's Monetization page: one click with a
+connected wallet, Solana Pay, or a plain USDC transfer from your payout or
+owner wallet. A balance below zero for 72 hours holds payouts, for 7 days
+pauses the app, for 30 days delists it; topping up brings it back.
 
 ## 14. Listing requirements & the automated listing test
 
