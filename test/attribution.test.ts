@@ -21,7 +21,8 @@ import {
 } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 import {
-  CHERRY_PAY_FEE_BPS,
+  CHERRY_REVENUE_SHARE_BPS,
+  cherryShareOf,
   getAppReferenceAddress,
   getAppReferenceKeyBytes,
   getAssociatedTokenAddress,
@@ -183,8 +184,8 @@ describe('splitCherryFee', () => {
     expect(splitCherryFee(amount, bps)).toEqual({ developerAmount, cherryAmount });
   });
 
-  it('defaults to the 30% Cherry Pay rate', () => {
-    expect(CHERRY_PAY_FEE_BPS).toBe(3000);
+  it("defaults to Cherry's 30% share", () => {
+    expect(CHERRY_REVENUE_SHARE_BPS).toBe(3000);
     expect(splitCherryFee(100n)).toEqual({ developerAmount: 70n, cherryAmount: 30n });
   });
 
@@ -348,5 +349,44 @@ describe('buildCherryFeeSplit (kit)', () => {
     );
     const compiled = compileTransaction(message);
     expect(Object.keys(compiled.signatures)).toEqual([PAYER]);
+  });
+});
+
+describe('buildCherryShareTransfer — Cherry\'s share alone', () => {
+  it('cherryShareOf is floor(fee * 30%)', () => {
+    expect(cherryShareOf(100n)).toBe(30n);
+    expect(cherryShareOf(3n)).toBe(0n);
+    expect(cherryShareOf(1_000_001n, 2500)).toBe(250_000n);
+  });
+
+  it('web3.js: one SOL transfer to the treasury, tagged with the app reference', () => {
+    const ixs = web3.buildCherryShareTransfer({ payer: PAYER, treasury: TREASURY, amount: 300_000n, appId: 'example-app' });
+    expect(ixs).toHaveLength(1);
+    const t = SystemInstruction.decodeTransfer(ixs[0]!);
+    expect(t.fromPubkey.toBase58()).toBe(PAYER);
+    expect(t.toPubkey.toBase58()).toBe(TREASURY);
+    expect(t.lamports).toBe(300_000n);
+    expect(ixs[0]!.keys.map((k) => k.pubkey.toBase58())).toContain(getAppReferenceAddress('example-app'));
+  });
+
+  it('web3.js: SPL creates the treasury account idempotently, then TransferChecked from the payer', () => {
+    const ixs = web3.buildCherryShareTransfer({ payer: PAYER, treasury: TREASURY, amount: 1_500_000n, mint: USDC, decimals: 6, appId: 'a' });
+    expect(ixs).toHaveLength(2);
+    expect(ixs[0]!.programId.toBase58()).toBe(ATA_PROGRAM);
+    expect(ixs[1]!.programId.toBase58()).toBe(TOKEN_PROGRAM);
+    expect(ixs[1]!.data[0]).toBe(12);
+    expect(Buffer.from(ixs[1]!.data).readBigUInt64LE(1)).toBe(1_500_000n);
+    expect(ixs[1]!.keys[2]!.pubkey.toBase58()).toBe(getAssociatedTokenAddress(TREASURY, USDC));
+  });
+
+  it('kit matches web3.js account for account', () => {
+    const a = web3.buildCherryShareTransfer({ payer: PAYER, treasury: TREASURY, amount: 7n, mint: USDC, decimals: 6, appId: 'a' });
+    const b = kit.buildCherryShareTransfer({ payer: PAYER, treasury: TREASURY, amount: 7n, mint: USDC, decimals: 6, appId: 'a' });
+    expect(b.map((ix) => ix.accounts.map((m) => m.address))).toEqual(a.map((ix) => ix.keys.map((k) => k.pubkey.toBase58())));
+  });
+
+  it('refuses a zero or negative share', () => {
+    expect(() => web3.buildCherryShareTransfer({ payer: PAYER, treasury: TREASURY, amount: 0n })).toThrow(RangeError);
+    expect(() => web3.buildCherryShareTransfer({ payer: PAYER, treasury: TREASURY, amount: -1n })).toThrow(RangeError);
   });
 });

@@ -50,7 +50,7 @@ Find out (read the code; ask only what you can't determine):
 4. Backend language (Node / Python / Go / none) and where requests are authorized.
 5. Hosting (Vercel, Netlify, nginx, Express…) — where response headers are set.
 6. UI to hide inside Cherry: wallet connect button/modal, login screen, header/nav, footer, landing page.
-7. The mini-app id (developer portal) and, if monetizing, the chosen fee model and the Cherry treasury address (portal). Never invent a treasury address.
+7. The mini-app id (developer portal) and, if monetizing, the declared revenue model and share, and the Cherry treasury address (portal). Never invent a treasury address.
 
 ### Step 2: Install
 
@@ -200,17 +200,22 @@ tx.add(withAppReference(SystemProgram.transfer({ fromPubkey, toPubkey, lamports 
 ```
 
 - Never append it to DEX/aggregator instructions (they read trailing accounts).
-- Fee model A (Cherry Pay split, 30%): build payments with
-  `buildCherryFeeSplit({ payer, developer, treasury, amount /* bigint base units */, mint?, decimals?, appId })`
-  — synchronous, returns instructions; treasury from the portal.
-- Model B (referral, Cherry keeps 30% of the referral fee): pass the app's
-  Cherry-provisioned `referralAccount` (portal → Monetization) and a
-  `referralFee` of 50-255 bps on every Jupiter order; a swap without it is
-  billed at the volume rate.
-- Model D (25 bps of confirmed volume, prepaid USDC): nothing to build for the
-  fee; the host meters it. Remind the developer to top up in the portal.
-- The reference key is attribution only (Dune, the developer's own queries);
-  Cherry never bills from it, so it is not a way to lower a fee.
+- Cherry measures the app's volume itself and bills 30% of the revenue the
+  developer declared in the portal (sales = everything users pay; commission /
+  mixed = the declared share of what users move; free = nothing). Pay it inside
+  the app's own transactions so nothing is invoiced:
+  - sales: build each payment with
+    `buildCherryFeeSplit({ payer, developer, treasury, amount /* bigint base units */, mint?, decimals?, appId })`
+    (70% developer, 30% Cherry, same transaction);
+  - commission / mixed: where the app takes its fee, take it 30% lower and add
+    `buildCherryShareTransfer({ payer, treasury, amount: cherryShareOf(fee), mint?, decimals?, appId })`,
+    so the user pays the same in total. Works with any protocol or provider.
+  - Fees that accrue and are claimed later cannot be split per transaction:
+    the weekly invoice covers them.
+- Treasury from the portal (Monetization); never invent one. Every fee shown
+  to the user before they sign; no hidden spreads.
+- The reference key is attribution (Dune, the developer's own queries); the
+  share legs carry it so Cherry credits them to the app.
 
 ### Step 10: Language, theme & safe area (README §6, "Language, theme, platform & safe area")
 

@@ -1,5 +1,5 @@
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
-import { getAppReferenceKeyBytes, planCherryFeeSplit, type PlannedInstruction } from '../attribution';
+import { getAppReferenceKeyBytes, planCherryFeeSplit, planCherryShareTransfer, type PlannedInstruction } from '../attribution';
 
 /** An address as web3.js `PublicKey` or base58 string. */
 export type PublicKeyLike = PublicKey | string;
@@ -48,7 +48,7 @@ export interface CherryFeeSplitParams {
   mint?: PublicKeyLike;
   /** Mint decimals — required with `mint` (TransferChecked verifies it). */
   decimals?: number;
-  /** Cherry's share in basis points. Default `3000` (30%, the Cherry Pay rate). */
+  /** Cherry's share in basis points. Default `3000` (30%, `CHERRY_REVENUE_SHARE_BPS`). */
   cherryBps?: number;
   /** Token program of `mint`. Default the SPL Token program; pass Token-2022's id for Token-2022 mints. */
   tokenProgram?: PublicKeyLike;
@@ -64,7 +64,8 @@ export interface CherryFeeSplitParams {
 
 /**
  * Instructions that pay `amount` from `payer`, split between the developer
- * and Cherry's treasury inside the SAME transaction (fee model A, Cherry Pay).
+ * and Cherry's treasury inside the SAME transaction: for an app whose
+ * revenue is what users pay it (a sale, an item, an entry fee).
  *
  * Exact integer math: Cherry gets `floor(amount * cherryBps / 10_000)`, the
  * developer gets the rest. SOL legs are System transfers; SPL legs are
@@ -85,6 +86,51 @@ export function buildCherryFeeSplit(params: CherryFeeSplitParams): TransactionIn
     mint: params.mint === undefined ? undefined : toBase58(params.mint),
     decimals: params.decimals,
     cherryBps: params.cherryBps,
+    tokenProgram: params.tokenProgram === undefined ? undefined : toBase58(params.tokenProgram),
+    createAssociatedTokenAccounts: params.createAssociatedTokenAccounts,
+    appId: params.appId,
+  }).map(toTransactionInstruction);
+}
+
+export interface CherryShareTransferParams {
+  /** Who pays: signs the transfer (and funds the treasury token account if missing). */
+  payer: PublicKeyLike;
+  /** Cherry's treasury wallet, from the developer portal. Never hard-code a guess. */
+  treasury: PublicKeyLike;
+  /** Cherry's share itself, in base units: `cherryShareOf(yourFee)`. */
+  amount: bigint;
+  /** SPL mint. Omit for native SOL. */
+  mint?: PublicKeyLike;
+  /** Mint decimals — required with `mint`. */
+  decimals?: number;
+  /** Token program of `mint`. Default the SPL Token program. */
+  tokenProgram?: PublicKeyLike;
+  /** Prepend idempotent creation of the treasury's token account (SPL). Default `true`. */
+  createAssociatedTokenAccounts?: boolean;
+  /** Attach your app reference key (recommended: it is how Cherry credits the payment to your app). */
+  appId?: string;
+}
+
+/**
+ * One transfer of Cherry's share to its treasury, for an app whose own fee is
+ * collected elsewhere: a protocol's integrator or referral fee, its own
+ * program. Take your usual fee 30% lower and add this leg, so the user pays
+ * the same in total:
+ *
+ * ```ts
+ * const yourFee = (amountIn * 100n) / 10_000n;           // your 1% of the trade
+ * const cherry = cherryShareOf(yourFee);                 // Cherry's 30% of it
+ * // charge (yourFee - cherry) through your protocol, and:
+ * tx.add(...buildCherryShareTransfer({ payer, treasury, amount: cherry, mint, decimals, appId }));
+ * ```
+ */
+export function buildCherryShareTransfer(params: CherryShareTransferParams): TransactionInstruction[] {
+  return planCherryShareTransfer({
+    payer: toBase58(params.payer),
+    treasury: toBase58(params.treasury),
+    amount: params.amount,
+    mint: params.mint === undefined ? undefined : toBase58(params.mint),
+    decimals: params.decimals,
     tokenProgram: params.tokenProgram === undefined ? undefined : toBase58(params.tokenProgram),
     createAssociatedTokenAccounts: params.createAssociatedTokenAccounts,
     appId: params.appId,

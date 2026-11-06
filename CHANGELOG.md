@@ -46,7 +46,10 @@ changes.
   (core), `getAppReferenceKey`, `withAppReference` (`/solana`, `/kit`).
 - Cherry fee split: `buildCherryFeeSplit` (`/solana`, `/kit`; SOL and
   SPL/Token-2022 with idempotent ATA creation), `splitCherryFee`, and
-  `CHERRY_PAY_FEE_BPS`, `CHERRY_REFERRAL_SHARE_BPS`, `CHERRY_VOLUME_FEE_BPS`.
+  `CHERRY_REVENUE_SHARE_BPS` (3000: Cherry's 30% of the revenue the developer
+  declares; Cherry measures the volume itself). `buildCherryShareTransfer` /
+  `cherryShareOf` add Cherry's share alone, for apps whose own fee is
+  collected elsewhere (a protocol's integrator fee, their own program).
 - `trustedOrigins` option on `CherryMiniApp`, `CherryMiniAppProvider`,
   `CherryWalletAdapter` and `getSharedBridge()`; `isTrustedHostOrigin()`,
   `DEFAULT_TRUSTED_HOST_ORIGINS`; `Bridge#hostOrigin`, `#transport`,

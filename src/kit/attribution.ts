@@ -3,6 +3,7 @@ import type { AccountRole, Address } from '@solana/kit';
 import {
   getAppReferenceAddress,
   planCherryFeeSplit,
+  planCherryShareTransfer,
   type PlannedAccount,
   type PlannedInstruction,
 } from '../attribution';
@@ -91,7 +92,8 @@ export interface CherryKitFeeSplitParams {
 
 /**
  * Kit instructions that pay `amount` from `payer`, split between the
- * developer and Cherry's treasury in the same transaction (fee model A).
+ * developer and Cherry's treasury in the same transaction (an app whose
+ * revenue is what users pay it).
  * Same semantics as the web3.js `buildCherryFeeSplit` in
  * `@cherrydotfun/miniapp-sdk/solana`: Cherry gets
  * `floor(amount * cherryBps / 10_000)`, the developer the rest; zero legs are
@@ -108,6 +110,45 @@ export function buildCherryFeeSplit(params: CherryKitFeeSplitParams): CherryKitI
     mint: params.mint,
     decimals: params.decimals,
     cherryBps: params.cherryBps,
+    tokenProgram: params.tokenProgram,
+    createAssociatedTokenAccounts: params.createAssociatedTokenAccounts,
+    appId: params.appId,
+  }).map((ix) => toKitInstruction(ix, payerSigner));
+}
+
+export interface CherryKitShareTransferParams {
+  /** Who pays: an address, or a kit `TransactionSigner` (attached to its metas). */
+  payer: CherryKitSignerLike | string;
+  /** Cherry's treasury wallet, from the developer portal. Never hard-code a guess. */
+  treasury: string;
+  /** Cherry's share itself, in base units: `cherryShareOf(yourFee)`. */
+  amount: bigint;
+  /** SPL mint. Omit for native SOL. */
+  mint?: string;
+  /** Mint decimals — required with `mint`. */
+  decimals?: number;
+  /** Token program of `mint`. Default the SPL Token program. */
+  tokenProgram?: string;
+  /** Prepend idempotent creation of the treasury's token account (SPL). Default `true`. */
+  createAssociatedTokenAccounts?: boolean;
+  /** Attach your app reference key (how Cherry credits the payment to your app). */
+  appId?: string;
+}
+
+/**
+ * Kit instructions for one transfer of Cherry's share to its treasury, for an
+ * app whose own fee is collected elsewhere. Same semantics as the web3.js
+ * `buildCherryShareTransfer` in `@cherrydotfun/miniapp-sdk/solana`.
+ */
+export function buildCherryShareTransfer(params: CherryKitShareTransferParams): CherryKitInstruction[] {
+  const payerSigner = typeof params.payer === 'string' ? null : params.payer;
+  const payer = typeof params.payer === 'string' ? params.payer : params.payer.address;
+  return planCherryShareTransfer({
+    payer,
+    treasury: params.treasury,
+    amount: params.amount,
+    mint: params.mint,
+    decimals: params.decimals,
     tokenProgram: params.tokenProgram,
     createAssociatedTokenAccounts: params.createAssociatedTokenAccounts,
     appId: params.appId,

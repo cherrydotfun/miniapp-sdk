@@ -979,16 +979,27 @@ covered in **[BLINKS.md](./BLINKS.md)**.
 
 ## 13. Monetization & on-chain attribution
 
-You choose a fee model in the developer portal:
+**Cherry measures, you declare, Cherry takes 30% of your revenue.** In the
+developer portal you say how your app makes money: **sales** (users pay you:
+items, entry, subscriptions, tips: all of it is revenue), **commission** (you
+keep a share of what users move: swaps, trading, marketplaces, betting,
+resale; you state the share), **mixed** (state the effective share), or
+**free**. Cherry measures the app's volume itself: what leaves users' wallets
+in transactions they sign in Cherry. Each week it bills
+`volume × your declared share × 30%` (`CHERRY_REVENUE_SHARE_BPS = 3000`).
 
-| Model | How Cherry earns | What you build |
-|---|---|---|
-| **A — Cherry Pay split** | **30%** of each payment, paid to the Cherry treasury **inside the same transaction** | `buildCherryFeeSplit(...)` for every payment |
-| **B — Protocol referral fees** (e.g. Jupiter referral) | **30% of the referral fee** the protocol pays; you get 70% | Pass your app's referral account (Cherry creates it; the portal shows it under Monetization) and fee on every order |
-| **D — Volume metering** | **25 bps** (0.25%) of your app's confirmed volume, from a prepaid USDC balance | Nothing for the fee itself; keep the balance topped up in the portal |
+You pay it either way, and the two add up:
 
-Constants: `CHERRY_PAY_FEE_BPS` (3000), `CHERRY_REFERRAL_SHARE_BPS` (3000),
-`CHERRY_VOLUME_FEE_BPS` (25).
+1. **Inside your own transactions (preferred).** Wherever you take your money,
+   add Cherry's 30% of it in the same transaction, tagged with your app id.
+   Works with any provider: you know your fee, so you add Cherry's part next to it.
+   Every leg Cherry sees is credited to your app.
+2. **Weekly invoice** for whatever was not paid that way, payable in USDC from
+   the portal (one click with a wallet, Solana Pay, or a transfer from your
+   owner wallet).
+
+Your declared share is part of the Developer Agreement; Cherry compares it
+with what it measures and re-bills differences.
 
 ### The app reference key (all models)
 
@@ -1019,8 +1030,9 @@ const ix = withAppReference(SystemProgram.transfer({ fromPubkey, toPubkey, lampo
 - Other languages: `base58(sha256(b"cherry:app:" + app_id.encode()))`.
 - Use the **verified** `app_id`/`aud` on your server, or `cherry.appId` in the client.
 
-### Model A — `buildCherryFeeSplit`
+### Sales — `buildCherryFeeSplit`
 
+The user pays you; split the payment in the same transaction: 70% to you, 30% to Cherry.
 Synchronous; returns the instructions to add to your transaction.
 
 ```ts
@@ -1062,25 +1074,36 @@ at least rent-exempt (~0.00089 SOL). The kit entry has the same function with
 kit types (`payer` is an address, or a kit `TransactionSigner`, which is then
 attached to the instructions).
 
-### Model B — referral fees
+### Commission — `buildCherryShareTransfer`
 
-Cherry creates a Jupiter referral account for your app when you publish on
-this model (the portal's Monetization page shows it, and can create it
-earlier). Pass it as `referralAccount`, with a `referralFee` of 50 to 255 bps,
-on every Jupiter order. Cherry claims the fees, keeps 30% of what it receives
-(after Jupiter's own 20%) and pays you 70% in USDC once your share reaches
-$20. A Jupiter swap that does not carry your account is billed at the volume
-rate instead, and the portal flags it.
+Your fee is collected somewhere else: a protocol's integrator or referral
+parameter, your own program, a spread. Take your usual fee 30% lower there
+and add Cherry's share as one transfer from the user in the same transaction,
+so the user pays the same in total:
 
-### Model D — volume metering
+```ts
+import { buildCherryShareTransfer, cherryShareOf } from '@cherrydotfun/miniapp-sdk/solana'; // or '/kit'
 
-No code for the fee itself. Cherry meters 25 bps of the value that leaves
-your users' wallets in your app's finalized transactions, as the host priced
-it before they signed, and charges it daily (UTC) from your prepaid USDC
-balance. Top up from the portal's Monetization page: one click with a
-connected wallet, Solana Pay, or a plain USDC transfer from your payout or
-owner wallet. A balance below zero for 72 hours holds payouts, for 7 days
-pauses the app, for 30 days delists it; topping up brings it back.
+const yourFee = (amountIn * 100n) / 10_000n;   // your 1% of this trade
+const cherry = cherryShareOf(yourFee);          // Cherry's 30% of it
+// charge (yourFee - cherry) through your usual mechanism, and add:
+tx.add(...buildCherryShareTransfer({
+  payer: cherry.wallet.publicKey!,
+  treasury: CHERRY_TREASURY,
+  amount: cherry,                               // Cherry's share itself, base units
+  mint: USDC_MINT, decimals: 6,                 // omit both for SOL
+  appId: cherry.appId!,                          // how Cherry credits it to your app
+}));
+```
+
+Same parameters as `buildCherryFeeSplit` minus `developer` and `cherryBps`;
+`amount` is Cherry's share itself. Where a fee accrues and is claimed later
+(so it cannot be split per transaction), skip this: the weekly invoice covers it.
+
+### Free
+
+Nothing to build. If you start charging users, change the revenue model in
+the portal first.
 
 ## 14. Listing requirements & the automated listing test
 
@@ -1222,7 +1245,7 @@ function isPolicyDenied(error: unknown): boolean;
 function getAppReferenceKeyBytes(appId: string): Uint8Array;   // sha256("cherry:app:" + appId)
 function getAppReferenceAddress(appId: string): string;        // base58
 function splitCherryFee(amount: bigint, cherryBps?: number /* 3000 */): { developerAmount: bigint; cherryAmount: bigint };
-const CHERRY_PAY_FEE_BPS = 3000, CHERRY_REFERRAL_SHARE_BPS = 3000, CHERRY_VOLUME_FEE_BPS = 25;
+const CHERRY_REVENUE_SHARE_BPS = 3000;
 const CHERRY_APP_REFERENCE_PREFIX = 'cherry:app:';
 
 // Advanced
@@ -1278,12 +1301,13 @@ const CherryWalletAdapterName: WalletName<'Cherry'>;
 function getAppReferenceKey(appId: string): PublicKey;
 function withAppReference(instruction: TransactionInstruction, appId: string): TransactionInstruction;
 function buildCherryFeeSplit(params: CherryFeeSplitParams): TransactionInstruction[];   // synchronous
+function buildCherryShareTransfer(params: CherryShareTransferParams): TransactionInstruction[];   // Cherry's share alone
 interface CherryFeeSplitParams {
   payer: PublicKey | string; developer: PublicKey | string; treasury: PublicKey | string;
   amount: bigint; mint?: PublicKey | string; decimals?: number; cherryBps?: number;
   tokenProgram?: PublicKey | string; createAssociatedTokenAccounts?: boolean; appId?: string;
 }
-// + splitCherryFee, CHERRY_PAY_FEE_BPS, CHERRY_REFERRAL_SHARE_BPS, CHERRY_VOLUME_FEE_BPS
+// + splitCherryFee, cherryShareOf, CHERRY_REVENUE_SHARE_BPS
 ```
 
 ### `@cherrydotfun/miniapp-sdk/kit` (@solana/kit)
@@ -1293,12 +1317,13 @@ function createCherrySigner(cherry: CherryMiniApp): CherryTransactionSigner;   /
 function getAppReferenceKey(appId: string): Address;
 function withAppReference<T extends { readonly accounts?: readonly unknown[] }>(instruction: T, appId: string): T;
 function buildCherryFeeSplit(params: CherryKitFeeSplitParams): CherryKitInstruction[];   // synchronous
+function buildCherryShareTransfer(params: CherryKitShareTransferParams): CherryKitInstruction[];
 interface CherryKitFeeSplitParams {
   payer: { address: string } | string;        // a TransactionSigner is attached to the instructions
   developer: string; treasury: string; amount: bigint; mint?: string; decimals?: number;
   cherryBps?: number; tokenProgram?: string; createAssociatedTokenAccounts?: boolean; appId?: string;
 }
-// + splitCherryFee, CHERRY_PAY_FEE_BPS, CHERRY_REFERRAL_SHARE_BPS, CHERRY_VOLUME_FEE_BPS
+// + splitCherryFee, cherryShareOf, CHERRY_REVENUE_SHARE_BPS
 ```
 
 ## 18. Bridge protocol (advanced)

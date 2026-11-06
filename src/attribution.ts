@@ -8,14 +8,15 @@ import { sha256 } from './internal/sha256';
  * into their own instruction types.
  */
 
-// ── fee models ─────────────────────────────────────────────────────────────
+// ── Cherry's share ─────────────────────────────────────────────────────────
 
-/** Model A — Cherry Pay split: Cherry's share of a payment, in basis points (30%). */
-export const CHERRY_PAY_FEE_BPS = 3000;
-/** Model B — protocol referral fees: Cherry's share of the referral fee, in basis points (30%). */
-export const CHERRY_REFERRAL_SHARE_BPS = 3000;
-/** Model D — volume metering: Cherry's fee on the app's confirmed volume, in basis points (0.25%). */
-export const CHERRY_VOLUME_FEE_BPS = 25;
+/**
+ * Cherry's share of the app's revenue, in basis points (30%). Cherry measures
+ * the app's volume itself and bills this share of the revenue the developer
+ * declared in the portal; paying it inside the app's own transactions (below)
+ * means nothing is left to invoice.
+ */
+export const CHERRY_REVENUE_SHARE_BPS = 3000;
 
 const BPS_DENOMINATOR = 10_000n;
 const U64_MAX = (1n << 64n) - 1n;
@@ -62,7 +63,7 @@ export interface CherryFeeSplitAmounts {
  * DOWN; the developer gets the remainder, so the two always add up to
  * `amount`.
  */
-export function splitCherryFee(amount: bigint, cherryBps: number = CHERRY_PAY_FEE_BPS): CherryFeeSplitAmounts {
+export function splitCherryFee(amount: bigint, cherryBps: number = CHERRY_REVENUE_SHARE_BPS): CherryFeeSplitAmounts {
   if (typeof amount !== 'bigint') throw new TypeError('amount must be a bigint (base units)');
   if (amount <= 0n) throw new RangeError('amount must be greater than 0');
   if (amount > U64_MAX) throw new RangeError('amount does not fit in a u64');
@@ -192,39 +193,31 @@ export function withAppReferencePlan(instruction: PlannedInstruction, appId: str
   };
 }
 
-/**
- * @internal The instructions of a Cherry Pay split, library-agnostic.
- * Order: [create developer ATA, create treasury ATA] (SPL only, when enabled
- * and the leg is non-zero), developer transfer, Cherry transfer. A zero leg is
- * omitted. With `appId`, the reference key rides on the first transfer.
- */
-export function planCherryFeeSplit(input: FeeSplitPlanInput): PlannedInstruction[] {
-  const payer = encodeBase58(decodeAddress(input.payer, 'payer'));
-  const developer = encodeBase58(decodeAddress(input.developer, 'developer'));
-  const treasury = encodeBase58(decodeAddress(input.treasury, 'treasury'));
-  const { developerAmount, cherryAmount } = splitCherryFee(input.amount, input.cherryBps ?? CHERRY_PAY_FEE_BPS);
-  const legs: Array<{ to: string; amount: bigint }> = [
-    { to: developer, amount: developerAmount },
-    { to: treasury, amount: cherryAmount },
-  ].filter((leg) => leg.amount > 0n);
-
+/** @internal Plan transfers of `legs` from `payer`, SOL or one SPL mint; zero legs omitted. */
+function planTransfers(
+  payerIn: string,
+  legsIn: Array<{ to: string; amount: bigint }>,
+  opts: Pick<FeeSplitPlanInput, 'mint' | 'decimals' | 'tokenProgram' | 'createAssociatedTokenAccounts' | 'appId'>,
+): PlannedInstruction[] {
+  const payer = encodeBase58(decodeAddress(payerIn, 'payer'));
+  const legs = legsIn.filter((leg) => leg.amount > 0n);
   const instructions: PlannedInstruction[] = [];
   const transfers: PlannedInstruction[] = [];
 
-  if (input.mint === undefined) {
-    if (input.decimals !== undefined && input.decimals !== 9) {
+  if (opts.mint === undefined) {
+    if (opts.decimals !== undefined && opts.decimals !== 9) {
       throw new RangeError('SOL has 9 decimals — omit `decimals` (or pass 9) when `mint` is omitted');
     }
     for (const leg of legs) transfers.push(systemTransfer(payer, leg.to, leg.amount));
   } else {
-    const mint = encodeBase58(decodeAddress(input.mint, 'mint'));
-    const tokenProgram = encodeBase58(decodeAddress(input.tokenProgram ?? TOKEN_PROGRAM_ADDRESS, 'tokenProgram'));
-    const decimals = input.decimals;
+    const mint = encodeBase58(decodeAddress(opts.mint, 'mint'));
+    const tokenProgram = encodeBase58(decodeAddress(opts.tokenProgram ?? TOKEN_PROGRAM_ADDRESS, 'tokenProgram'));
+    const decimals = opts.decimals;
     if (decimals === undefined || !Number.isInteger(decimals) || decimals < 0 || decimals > 255) {
-      throw new RangeError('`decimals` (the mint decimals, 0-255) is required for an SPL token split');
+      throw new RangeError('`decimals` (the mint decimals, 0-255) is required for an SPL token transfer');
     }
     const source = getAssociatedTokenAddress(payer, mint, tokenProgram);
-    const createAtas = input.createAssociatedTokenAccounts ?? true;
+    const createAtas = opts.createAssociatedTokenAccounts ?? true;
     for (const leg of legs) {
       const destination = getAssociatedTokenAddress(leg.to, mint, tokenProgram);
       if (createAtas) instructions.push(createAtaIdempotent(payer, destination, leg.to, mint, tokenProgram));
@@ -232,8 +225,63 @@ export function planCherryFeeSplit(input: FeeSplitPlanInput): PlannedInstruction
     }
   }
 
-  if (input.appId !== undefined && transfers[0]) {
-    transfers[0] = withAppReferencePlan(transfers[0], input.appId);
+  if (opts.appId !== undefined && transfers[0]) {
+    transfers[0] = withAppReferencePlan(transfers[0], opts.appId);
   }
   return [...instructions, ...transfers];
+}
+
+/**
+ * @internal The instructions of a payment split between the developer and
+ * Cherry, library-agnostic. Order: [create developer ATA, create treasury ATA]
+ * (SPL only, when enabled and the leg is non-zero), developer transfer, Cherry
+ * transfer. A zero leg is omitted. With `appId`, the reference key rides on
+ * the first transfer.
+ */
+export function planCherryFeeSplit(input: FeeSplitPlanInput): PlannedInstruction[] {
+  const developer = encodeBase58(decodeAddress(input.developer, 'developer'));
+  const treasury = encodeBase58(decodeAddress(input.treasury, 'treasury'));
+  const { developerAmount, cherryAmount } = splitCherryFee(input.amount, input.cherryBps ?? CHERRY_REVENUE_SHARE_BPS);
+  return planTransfers(
+    input.payer,
+    [
+      { to: developer, amount: developerAmount },
+      { to: treasury, amount: cherryAmount },
+    ],
+    input,
+  );
+}
+
+/** @internal Inputs of a lone Cherry-share transfer, every address as base58. */
+export interface ShareTransferPlanInput {
+  payer: string;
+  treasury: string;
+  /** Cherry's share itself, in base units (see `cherryShareOf`). */
+  amount: bigint;
+  mint?: string | undefined;
+  decimals?: number | undefined;
+  tokenProgram?: string | undefined;
+  createAssociatedTokenAccounts?: boolean | undefined;
+  appId?: string | undefined;
+}
+
+/**
+ * @internal One transfer of Cherry's share to the treasury, for an app whose
+ * own fee is collected elsewhere (a protocol's integrator fee, its own
+ * program). With `appId`, the reference key rides on the transfer.
+ */
+export function planCherryShareTransfer(input: ShareTransferPlanInput): PlannedInstruction[] {
+  if (typeof input.amount !== 'bigint') throw new TypeError('amount must be a bigint (base units)');
+  if (input.amount <= 0n) throw new RangeError('amount must be greater than 0');
+  if (input.amount > U64_MAX) throw new RangeError('amount does not fit in a u64');
+  const treasury = encodeBase58(decodeAddress(input.treasury, 'treasury'));
+  return planTransfers(input.payer, [{ to: treasury, amount: input.amount }], input);
+}
+
+/**
+ * Cherry's share of an app fee, in base units: `floor(fee * cherryBps / 10_000)`.
+ * Use it for the amount of `buildCherryShareTransfer`.
+ */
+export function cherryShareOf(fee: bigint, cherryBps: number = CHERRY_REVENUE_SHARE_BPS): bigint {
+  return splitCherryFee(fee, cherryBps).cherryAmount;
 }

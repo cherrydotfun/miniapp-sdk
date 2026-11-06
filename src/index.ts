@@ -91,10 +91,9 @@ export {
   getAppReferenceKeyBytes,
   getAppReferenceAddress,
   splitCherryFee,
+  cherryShareOf,
   CHERRY_APP_REFERENCE_PREFIX,
-  CHERRY_PAY_FEE_BPS,
-  CHERRY_REFERRAL_SHARE_BPS,
-  CHERRY_VOLUME_FEE_BPS,
+  CHERRY_REVENUE_SHARE_BPS,
   type CherryFeeSplitAmounts,
 } from './attribution';
 

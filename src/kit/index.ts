@@ -3,15 +3,16 @@ export {
   getAppReferenceKey,
   withAppReference,
   buildCherryFeeSplit,
+  buildCherryShareTransfer,
   type CherryKitFeeSplitParams,
+  type CherryKitShareTransferParams,
   type CherryKitInstruction,
   type CherryKitAccountMeta,
   type CherryKitSignerLike,
 } from './attribution';
 export {
   splitCherryFee,
-  CHERRY_PAY_FEE_BPS,
-  CHERRY_REFERRAL_SHARE_BPS,
-  CHERRY_VOLUME_FEE_BPS,
+  cherryShareOf,
+  CHERRY_REVENUE_SHARE_BPS,
   type CherryFeeSplitAmounts,
 } from '../attribution';
