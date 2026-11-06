@@ -48,7 +48,7 @@ export interface CherryFeeSplitParams {
   mint?: PublicKeyLike;
   /** Mint decimals — required with `mint` (TransferChecked verifies it). */
   decimals?: number;
-  /** Cherry's share in basis points. Default `3000` (30%, `CHERRY_REVENUE_SHARE_BPS`). */
+  /** Cherry's share in basis points. Default `1000` (10%, `CHERRY_REVENUE_SHARE_BPS`). */
   cherryBps?: number;
   /** Token program of `mint`. Default the SPL Token program; pass Token-2022's id for Token-2022 mints. */
   tokenProgram?: PublicKeyLike;
@@ -114,12 +114,12 @@ export interface CherryShareTransferParams {
 /**
  * One transfer of Cherry's share to its treasury, for an app whose own fee is
  * collected elsewhere: a protocol's integrator or referral fee, its own
- * program. Take your usual fee 30% lower and add this leg, so the user pays
+ * program. Take your usual fee 10% lower and add this leg, so the user pays
  * the same in total:
  *
  * ```ts
  * const yourFee = (amountIn * 100n) / 10_000n;           // your 1% of the trade
- * const cherry = cherryShareOf(yourFee);                 // Cherry's 30% of it
+ * const cherry = cherryShareOf(yourFee);                 // Cherry's 10% of it
  * // charge (yourFee - cherry) through your protocol, and:
  * tx.add(...buildCherryShareTransfer({ payer, treasury, amount: cherry, mint, decimals, appId }));
  * ```

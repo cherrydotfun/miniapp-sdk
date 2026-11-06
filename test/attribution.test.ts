@@ -184,9 +184,9 @@ describe('splitCherryFee', () => {
     expect(splitCherryFee(amount, bps)).toEqual({ developerAmount, cherryAmount });
   });
 
-  it("defaults to Cherry's 30% share", () => {
-    expect(CHERRY_REVENUE_SHARE_BPS).toBe(3000);
-    expect(splitCherryFee(100n)).toEqual({ developerAmount: 70n, cherryAmount: 30n });
+  it("defaults to Cherry's 10% share", () => {
+    expect(CHERRY_REVENUE_SHARE_BPS).toBe(1000);
+    expect(splitCherryFee(100n)).toEqual({ developerAmount: 90n, cherryAmount: 10n });
   });
 
   it('always adds up, rounds Cherry down, gives the remainder to the developer', () => {
@@ -222,15 +222,15 @@ describe('buildCherryFeeSplit (web3.js)', () => {
     });
     expect(ixs).toHaveLength(2);
     const [dev, cherry] = ixs.map((ix) => SystemInstruction.decodeTransfer(ix));
-    expect(dev).toMatchObject({ lamports: 700_000_001n });
+    expect(dev).toMatchObject({ lamports: 900_000_001n });
     expect(dev!.fromPubkey.toBase58()).toBe(PAYER);
     expect(dev!.toPubkey.toBase58()).toBe(DEVELOPER);
-    expect(cherry).toMatchObject({ lamports: 300_000_000n });
+    expect(cherry).toMatchObject({ lamports: 100_000_000n });
     expect(cherry!.toPubkey.toBase58()).toBe(TREASURY);
     expect(ixs[0]!.keys.map((k) => k.pubkey.toBase58())).toContain('3EY8K5SVayw9Rx7sSKf1p4Q5cDeVoga6T6BRyLZZ2wZV');
     expect(ixs[1]!.keys).toHaveLength(2);
     // Byte-identical to web3.js's own transfer (plus the reference account).
-    const own = SystemProgram.transfer({ fromPubkey: new PublicKey(PAYER), toPubkey: new PublicKey(TREASURY), lamports: 300_000_000n });
+    const own = SystemProgram.transfer({ fromPubkey: new PublicKey(PAYER), toPubkey: new PublicKey(TREASURY), lamports: 100_000_000n });
     expect(ixs[1]!.data.equals(own.data)).toBe(true);
   });
 
@@ -272,8 +272,8 @@ describe('buildCherryFeeSplit (web3.js)', () => {
       const data = Buffer.from(ix!.data);
       return { tag: data[0], amount: data.readBigUInt64LE(1), decimals: data[9], length: data.length };
     };
-    expect(checked(toDev)).toEqual({ tag: 12, amount: 7_000_000n, decimals: 6, length: 10 });
-    expect(checked(toCherry)).toEqual({ tag: 12, amount: 3_000_000n, decimals: 6, length: 10 });
+    expect(checked(toDev)).toEqual({ tag: 12, amount: 9_000_000n, decimals: 6, length: 10 });
+    expect(checked(toCherry)).toEqual({ tag: 12, amount: 1_000_000n, decimals: 6, length: 10 });
     expect(toDev!.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable])).toEqual([
       [payerAta, false, true],
       [USDC, false, false],
@@ -353,9 +353,9 @@ describe('buildCherryFeeSplit (kit)', () => {
 });
 
 describe('buildCherryShareTransfer — Cherry\'s share alone', () => {
-  it('cherryShareOf is floor(fee * 30%)', () => {
-    expect(cherryShareOf(100n)).toBe(30n);
-    expect(cherryShareOf(3n)).toBe(0n);
+  it('cherryShareOf is floor(fee * 10%)', () => {
+    expect(cherryShareOf(100n)).toBe(10n);
+    expect(cherryShareOf(9n)).toBe(0n);
     expect(cherryShareOf(1_000_001n, 2500)).toBe(250_000n);
   });
 

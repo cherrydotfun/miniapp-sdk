@@ -1,8 +1,8 @@
 # @cherrydotfun/miniapp-sdk
 
 The SDK for building **Cherry mini-apps** — web apps that run inside
-[Cherry](https://cherry.fun), the crypto messenger with a built-in Solana
-wallet (Cherry Wallet) and a mini-app marketplace.
+[Cherry](https://cherry.fun), the wallet and distribution platform for apps:
+the Cherry Wallet, a mini-app marketplace and chats, in one app.
 
 Inside Cherry the person is **already signed in and already has a wallet**.
 Your app gets their identity and a signing wallet from the host — no connect
@@ -43,7 +43,7 @@ alone.
 ## 1. What a Cherry mini-app is
 
 A mini-app is **your own website** (any framework) that Cherry opens inside the
-messenger:
+app:
 
 | Surface | Where | How it runs |
 |---|---|---|
@@ -804,7 +804,7 @@ The host checks every **transaction** request (`signTransaction`,
 | Tier | Per transaction | Per wallet, per app, per day | Forbidden instructions |
 |---|---|---|---|
 | `unverified` (self-serve listing) | **$50** outflow | **$50** outflow | token `Approve` / delegation, `SetAuthority`, `Assign`, durable-nonce transactions, subscriptions |
-| `verified` | $5,000 | $25,000 | — |
+| `verified` | $1,000 | $5,000 | — |
 | `partner` | no limit | no limit | — |
 
 Read your tier from `cherry.tier` (display) or the verified `tier` claim
@@ -979,19 +979,19 @@ covered in **[BLINKS.md](./BLINKS.md)**.
 
 ## 13. Monetization & on-chain attribution
 
-**Cherry measures, you declare, Cherry takes 30% of your revenue.** In the
+**Cherry measures, you declare, Cherry takes 10% of your revenue.** In the
 developer portal you say how your app makes money: **sales** (users pay you:
 items, entry, subscriptions, tips: all of it is revenue), **commission** (you
 keep a share of what users move: swaps, trading, marketplaces, betting,
 resale; you state the share), **mixed** (state the effective share), or
 **free**. Cherry measures the app's volume itself: what leaves users' wallets
 in transactions they sign in Cherry. Each week it bills
-`volume × your declared share × 30%` (`CHERRY_REVENUE_SHARE_BPS = 3000`).
+`volume × your declared share × 10%` (`CHERRY_REVENUE_SHARE_BPS = 1000`).
 
 You pay it either way, and the two add up:
 
 1. **Inside your own transactions (preferred).** Wherever you take your money,
-   add Cherry's 30% of it in the same transaction, tagged with your app id.
+   add Cherry's 10% of it in the same transaction, tagged with your app id.
    Works with any provider: you know your fee, so you add Cherry's part next to it.
    Every leg Cherry sees is credited to your app.
 2. **Weekly invoice** for whatever was not paid that way, payable in USDC from
@@ -1032,7 +1032,7 @@ const ix = withAppReference(SystemProgram.transfer({ fromPubkey, toPubkey, lampo
 
 ### Sales — `buildCherryFeeSplit`
 
-The user pays you; split the payment in the same transaction: 70% to you, 30% to Cherry.
+The user pays you; split the payment in the same transaction: 90% to you, 10% to Cherry.
 Synchronous; returns the instructions to add to your transaction.
 
 ```ts
@@ -1062,7 +1062,7 @@ buildCherryFeeSplit({ payer, developer: DEV_WALLET, treasury: CHERRY_TREASURY,
 | `amount` | `bigint` | — | total, base units, > 0, fits u64 |
 | `mint` | `PublicKey \| string` | SOL | omit for native SOL |
 | `decimals` | `number` | — | required with `mint` |
-| `cherryBps` | `number` | `3000` | 0–10000 |
+| `cherryBps` | `number` | `1000` | 0–10000 |
 | `tokenProgram` | `PublicKey \| string` | SPL Token | pass Token-2022's id for Token-2022 mints |
 | `createAssociatedTokenAccounts` | `boolean` | `true` | prepend `CreateIdempotent` for developer & treasury ATAs |
 | `appId` | `string` | — | attach the reference key to the first transfer |
@@ -1077,7 +1077,7 @@ attached to the instructions).
 ### Commission — `buildCherryShareTransfer`
 
 Your fee is collected somewhere else: a protocol's integrator or referral
-parameter, your own program, a spread. Take your usual fee 30% lower there
+parameter, your own program, a spread. Take your usual fee 10% lower there
 and add Cherry's share as one transfer from the user in the same transaction,
 so the user pays the same in total:
 
@@ -1085,7 +1085,7 @@ so the user pays the same in total:
 import { buildCherryShareTransfer, cherryShareOf } from '@cherrydotfun/miniapp-sdk/solana'; // or '/kit'
 
 const yourFee = (amountIn * 100n) / 10_000n;   // your 1% of this trade
-const cherry = cherryShareOf(yourFee);          // Cherry's 30% of it
+const cherry = cherryShareOf(yourFee);          // Cherry's 10% of it
 // charge (yourFee - cherry) through your usual mechanism, and add:
 tx.add(...buildCherryShareTransfer({
   payer: cherry.wallet.publicKey!,
@@ -1244,8 +1244,8 @@ function isPolicyDenied(error: unknown): boolean;
 
 function getAppReferenceKeyBytes(appId: string): Uint8Array;   // sha256("cherry:app:" + appId)
 function getAppReferenceAddress(appId: string): string;        // base58
-function splitCherryFee(amount: bigint, cherryBps?: number /* 3000 */): { developerAmount: bigint; cherryAmount: bigint };
-const CHERRY_REVENUE_SHARE_BPS = 3000;
+function splitCherryFee(amount: bigint, cherryBps?: number /* 1000 */): { developerAmount: bigint; cherryAmount: bigint };
+const CHERRY_REVENUE_SHARE_BPS = 1000;
 const CHERRY_APP_REFERENCE_PREFIX = 'cherry:app:';
 
 // Advanced

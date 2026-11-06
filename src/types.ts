@@ -178,8 +178,8 @@ export interface CherryEnvironment {
  * Trust tier of a mini-app, set by Cherry. It decides the wallet limits the
  * host enforces (see the README, "Wallet limits & policy errors"):
  * `unverified` — self-serve listing, $50 per transaction and per wallet per
- * day, risky instructions refused; `verified` — $5,000 per transaction,
- * $25,000 per day; `partner` — no SDK-side limits.
+ * day, risky instructions refused; `verified` — $1,000 per transaction,
+ * $5,000 per day; `partner` — no SDK-side limits.
  */
 export type CherryAppTier = 'unverified' | 'verified' | 'partner';
 

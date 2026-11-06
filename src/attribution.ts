@@ -11,12 +11,12 @@ import { sha256 } from './internal/sha256';
 // ── Cherry's share ─────────────────────────────────────────────────────────
 
 /**
- * Cherry's share of the app's revenue, in basis points (30%). Cherry measures
+ * Cherry's share of the app's revenue, in basis points (10%; lowered from 30% by the owner, 2026-11-06). Cherry measures
  * the app's volume itself and bills this share of the revenue the developer
  * declared in the portal; paying it inside the app's own transactions (below)
  * means nothing is left to invoice.
  */
-export const CHERRY_REVENUE_SHARE_BPS = 3000;
+export const CHERRY_REVENUE_SHARE_BPS = 1000;
 
 const BPS_DENOMINATOR = 10_000n;
 const U64_MAX = (1n << 64n) - 1n;

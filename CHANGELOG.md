@@ -46,7 +46,7 @@ changes.
   (core), `getAppReferenceKey`, `withAppReference` (`/solana`, `/kit`).
 - Cherry fee split: `buildCherryFeeSplit` (`/solana`, `/kit`; SOL and
   SPL/Token-2022 with idempotent ATA creation), `splitCherryFee`, and
-  `CHERRY_REVENUE_SHARE_BPS` (3000: Cherry's 30% of the revenue the developer
+  `CHERRY_REVENUE_SHARE_BPS` (1000: Cherry's 10% of the revenue the developer
   declares; Cherry measures the volume itself). `buildCherryShareTransfer` /
   `cherryShareOf` add Cherry's share alone, for apps whose own fee is
   collected elsewhere (a protocol's integrator fee, their own program).

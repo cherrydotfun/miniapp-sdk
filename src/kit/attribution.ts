@@ -80,7 +80,7 @@ export interface CherryKitFeeSplitParams {
   mint?: string;
   /** Mint decimals — required with `mint`. */
   decimals?: number;
-  /** Cherry's share in basis points. Default `3000` (30%). */
+  /** Cherry's share in basis points. Default `1000` (10%). */
   cherryBps?: number;
   /** Token program of `mint`. Default the SPL Token program. */
   tokenProgram?: string;
