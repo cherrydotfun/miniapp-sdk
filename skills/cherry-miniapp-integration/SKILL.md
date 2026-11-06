@@ -203,8 +203,14 @@ tx.add(withAppReference(SystemProgram.transfer({ fromPubkey, toPubkey, lamports 
 - Fee model A (Cherry Pay split, 30%): build payments with
   `buildCherryFeeSplit({ payer, developer, treasury, amount /* bigint base units */, mint?, decimals?, appId })`
   — synchronous, returns instructions; treasury from the portal.
-- Model B (referral, Cherry takes 30% of the referral fee) and model D
-  (25 bps of confirmed volume, prepaid): reference key on every transaction.
+- Model B (referral, Cherry keeps 30% of the referral fee): pass the app's
+  Cherry-provisioned `referralAccount` (portal → Monetization) and a
+  `referralFee` of 50-255 bps on every Jupiter order; a swap without it is
+  billed at the volume rate.
+- Model D (25 bps of confirmed volume, prepaid USDC): nothing to build for the
+  fee; the host meters it. Remind the developer to top up in the portal.
+- The reference key is attribution only (Dune, the developer's own queries);
+  Cherry never bills from it, so it is not a way to lower a fee.
 
 ### Step 10: Language, theme & safe area (README §6, "Language, theme, platform & safe area")
 
