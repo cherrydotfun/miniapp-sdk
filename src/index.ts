@@ -97,6 +97,14 @@ export {
   type CherryFeeSplitAmounts,
 } from './attribution';
 
+// Transaction labels — what a transaction does, shown in Cherry's wallet sheet
+export {
+  withTransactionLabel,
+  normalizeTransactionLabel,
+  TRANSACTION_LABEL_MAX,
+  type CherryTransactionOptions,
+} from './label';
+
 // Custom auth helpers (Privy, etc.)
 export {
   getCherryCustomAuthConfig,

@@ -722,9 +722,9 @@ const profile = res.ok ? ((await res.json()) as MiniAppPublicProfile) : null; //
 
 | Method | Returns | Permission | Notes |
 |---|---|---|---|
-| `wallet.signTransaction(tx)` | `Promise<Uint8Array>` (signed wire bytes) | `wallet:sign` | `tx`: `Transaction`, `VersionedTransaction`, `Uint8Array` or base64 |
-| `wallet.signAllTransactions(txs)` | `Promise<Uint8Array[]>` | `wallet:sign` | one approval for the batch |
-| `wallet.signAndSendTransaction(tx)` | `Promise<string>` (signature) | `wallet:send` | fullscreen only (not inline) |
+| `wallet.signTransaction(tx, { label? })` | `Promise<Uint8Array>` (signed wire bytes) | `wallet:sign` | `tx`: `Transaction`, `VersionedTransaction`, `Uint8Array` or base64 |
+| `wallet.signAllTransactions(txs, { label? })` | `Promise<Uint8Array[]>` | `wallet:sign` | one approval for the batch |
+| `wallet.signAndSendTransaction(tx, { label? })` | `Promise<string>` (signature) | `wallet:send` | fullscreen only (not inline) |
 | `wallet.signMessage(bytes)` | `Promise<Uint8Array>` (64-byte signature) | `wallet:sign` | **not** for login. Not policy-checked. |
 | `wallet.publicKey` / `getPublicKey()` | `string \| null` | — | |
 
@@ -748,6 +748,30 @@ const tx = new Transaction({ feePayer: new PublicKey(cherry.wallet.publicKey!), 
   .add(withAppReference(SystemProgram.transfer({ fromPubkey, toPubkey, lamports }), cherry.appId!));
 const signature = await cherry.wallet.signAndSendTransaction(tx);
 ```
+
+### Say what the transaction does (labels)
+
+Cherry's wallet sheet shows your app's name, the amount and the fee it decodes
+from the transaction itself. Add a **label** — one line in your words — so the
+person also reads what they are paying for:
+
+```ts
+await cherry.wallet.signAndSendTransaction(tx, { label: 'Buy 3 lives' });
+
+// Standard interfaces (wallet-adapter sendTransaction, a kit signer) have no
+// room for an extra argument: wrap the call instead.
+import { withTransactionLabel } from '@cherrydotfun/miniapp-sdk/solana';
+await withTransactionLabel('Enter the weekly tournament', () => sendTransaction(tx, connection));
+```
+
+- Name the action and the thing: "Buy 3 lives", "Swap 1 SOL to USDC",
+  "Claim winnings". Not "Transaction", not the app's name (Cherry shows it).
+- Plain text, one line, at most 80 characters (`TRANSACTION_LABEL_MAX`);
+  line breaks and control characters are folded, longer text is cut.
+- Never state a different amount than the transaction moves: Cherry shows the
+  decoded amount next to your words, and a mismatch reads as a scam.
+- An explicit `{ label }` wins over a surrounding `withTransactionLabel`; a
+  host that predates labels ignores them.
 
 ### Which address to build for
 
@@ -1196,9 +1220,9 @@ class CherryMiniApp {
   readonly claims: Readonly<Partial<LaunchTokenPayload>> | null;   // unverified
   readonly wallet: {
     readonly publicKey: string | null;
-    signTransaction(tx: unknown): Promise<Uint8Array>;
-    signAllTransactions(txs: unknown[]): Promise<Uint8Array[]>;
-    signAndSendTransaction(tx: unknown): Promise<string>;
+    signTransaction(tx: unknown, options?: { label?: string }): Promise<Uint8Array>;
+    signAllTransactions(txs: unknown[], options?: { label?: string }): Promise<Uint8Array[]>;
+    signAndSendTransaction(tx: unknown, options?: { label?: string }): Promise<string>;
     signMessage(message: Uint8Array): Promise<Uint8Array>;
   };
   getPublicKey(): string | null;
@@ -1343,7 +1367,8 @@ Methods: `wallet.connect`, `wallet.signMessage`, `wallet.signTransaction`,
 `wallet.signTransactions`, `wallet.signAndSendTransaction`,
 `navigate.userProfile` (alias `navigate.profile`), `navigate.openRoom` (alias
 `navigate.room`), `host.share`, and inline: `host.init`, `host.resize`,
-`host.callback`, `host.requestExpand`. Raw access:
+`host.callback`, `host.requestExpand`. The three transaction methods take an
+optional `label` (string, ≤ 80 characters) beside `transaction(s)`. Raw access:
 `getSharedBridge().request('host.resize', { height: 180 })`.
 
 **Context v2** (`cherry:init.context`, `cherry:context.context`, the

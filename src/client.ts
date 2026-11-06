@@ -1,5 +1,10 @@
 import { decodeJwt } from 'jose';
 import { Bridge, BridgeError, getSharedBridge, destroySharedBridge } from './bridge';
+import type { CherryTransactionOptions } from './label';
+
+/** The `label` param of a sign request, when the caller gave one. */
+const labelParam = (options?: CherryTransactionOptions): { label?: string } =>
+  options?.label !== undefined ? { label: options.label } : {};
 import type { BridgeEvent } from './bridge';
 import {
   CHERRY_LANG_PARAM,
@@ -506,9 +511,9 @@ export class CherryMiniApp {
    */
   get wallet(): {
     readonly publicKey: string | null;
-    signTransaction(transaction: unknown): Promise<unknown>;
-    signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
-    signAndSendTransaction(transaction: unknown): Promise<string>;
+    signTransaction(transaction: unknown, options?: CherryTransactionOptions): Promise<unknown>;
+    signAllTransactions(transactions: unknown[], options?: CherryTransactionOptions): Promise<Uint8Array[]>;
+    signAndSendTransaction(transaction: unknown, options?: CherryTransactionOptions): Promise<string>;
     signMessage(message: Uint8Array): Promise<Uint8Array>;
   } {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -517,31 +522,33 @@ export class CherryMiniApp {
       get publicKey(): string | null {
         return self._publicKey;
       },
-      signTransaction(transaction: unknown): Promise<Uint8Array> {
+      signTransaction(transaction: unknown, options?: CherryTransactionOptions): Promise<Uint8Array> {
         self.assertReady();
         return self.bridge
           .request('wallet.signTransaction', {
             transaction: serializeTxToBase64(transaction),
+            ...labelParam(options),
           })
           .then((result) => {
             const tx = (result as Record<string, unknown>)?.['transaction'] ?? result;
             return base64ToUint8Array(tx as string);
           });
       },
-      signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]> {
+      signAllTransactions(transactions: unknown[], options?: CherryTransactionOptions): Promise<Uint8Array[]> {
         self.assertReady();
         const base64Txs = transactions.map(serializeTxToBase64);
         return self.bridge
-          .request('wallet.signTransactions', { transactions: base64Txs })
+          .request('wallet.signTransactions', { transactions: base64Txs, ...labelParam(options) })
           .then((result) => {
             const signedArray = (result as Record<string, unknown>)?.['transactions'] ?? result;
             return (signedArray as string[]).map((tx) => base64ToUint8Array(tx));
           });
       },
-      signAndSendTransaction(transaction: unknown): Promise<string> {
+      signAndSendTransaction(transaction: unknown, options?: CherryTransactionOptions): Promise<string> {
         self.assertReady();
         return self.bridge.request('wallet.signAndSendTransaction', {
           transaction: serializeTxToBase64(transaction),
+          ...labelParam(options),
         }).then((result) => {
           const sig = (result as Record<string, unknown>)?.['signature'] ?? result;
           return sig as string;

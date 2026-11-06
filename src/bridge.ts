@@ -1,5 +1,6 @@
 import { DEFAULT_TRUSTED_HOST_ORIGINS } from './constants';
 import { detectPlatform } from './env';
+import { attachTransactionLabel } from './label';
 import type {
   BridgeMessage,
   BridgeRequest,
@@ -254,6 +255,9 @@ export class Bridge {
   }
 
   request(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    // Every signature request, from any entry (the facade, the wallet
+    // adapter, the kit signer), picks up its transaction label here.
+    const sent = attachTransactionLabel(method, params);
     return new Promise<unknown>((resolve, reject) => {
       const id = generateId();
       const timer = setTimeout(() => {
@@ -267,7 +271,7 @@ export class Bridge {
         type: 'cherry:request',
         id,
         method,
-        ...(params !== undefined ? { params } : {}),
+        ...(sent !== undefined ? { params: sent } : {}),
       };
       this.sendToHost(msg);
     });

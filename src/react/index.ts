@@ -68,3 +68,4 @@ export {
   type CherryPolicyDenial,
 } from '../bridge';
 export { BRIDGE_VERSION } from '../types';
+export { withTransactionLabel, TRANSACTION_LABEL_MAX, type CherryTransactionOptions } from '../label';

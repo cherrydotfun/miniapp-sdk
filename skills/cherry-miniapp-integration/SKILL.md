@@ -164,6 +164,12 @@ adapter `publicKey` / `signer.address`), a fresh blockhash, real instructions.
 Permissions: `wallet:sign` (sign), `wallet:send` (sign & send) — check
 `cherry.hasPermission(...)`.
 
+**Label every transaction** (README §7, "Say what the transaction does"):
+`cherry.wallet.signAndSendTransaction(tx, { label: 'Buy 3 lives' })`, or wrap a
+wallet-adapter / kit call in `withTransactionLabel('Buy 3 lives', () => …)`.
+One line naming the action and the thing, ≤ 80 characters, never an amount
+different from what the transaction moves.
+
 ### Step 8: Error & policy handling (README §8)
 
 ```ts

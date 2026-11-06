@@ -2,6 +2,7 @@ import { useMemo, useCallback } from 'react';
 import { useCherryMiniAppContext } from './provider';
 import { getCherryEnvironment, type DetectPlatformOptions } from '../env';
 import { readCherryDisplayContext } from '../context';
+import type { CherryTransactionOptions } from '../label';
 import type {
   CherryUser,
   CherryRoom,
@@ -83,10 +84,11 @@ export function useCherryApp() {
 export interface UseCherryWalletResult {
   publicKey: string | null;
   connected: boolean;
-  signTransaction(transaction: unknown): Promise<unknown>;
-  signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]>;
+  /** `options.label` says what the transaction does; Cherry shows it in the wallet sheet. */
+  signTransaction(transaction: unknown, options?: CherryTransactionOptions): Promise<unknown>;
+  signAllTransactions(transactions: unknown[], options?: CherryTransactionOptions): Promise<Uint8Array[]>;
   signMessage(message: Uint8Array): Promise<Uint8Array>;
-  signAndSendTransaction(transaction: unknown): Promise<string>;
+  signAndSendTransaction(transaction: unknown, options?: CherryTransactionOptions): Promise<string>;
 }
 
 export function useCherryWallet(): UseCherryWalletResult {
@@ -97,18 +99,18 @@ export function useCherryWallet(): UseCherryWalletResult {
       publicKey: user?.publicKey ?? null,
       connected: isReady && user !== null,
 
-      signTransaction(transaction: unknown): Promise<unknown> {
+      signTransaction(transaction: unknown, options?: CherryTransactionOptions): Promise<unknown> {
         if (!app) {
           return Promise.reject(new Error('CherryMiniApp not initialised'));
         }
-        return app.wallet.signTransaction(transaction);
+        return app.wallet.signTransaction(transaction, options);
       },
 
-      signAllTransactions(transactions: unknown[]): Promise<Uint8Array[]> {
+      signAllTransactions(transactions: unknown[], options?: CherryTransactionOptions): Promise<Uint8Array[]> {
         if (!app) {
           return Promise.reject(new Error('CherryMiniApp not initialised'));
         }
-        return app.wallet.signAllTransactions(transactions);
+        return app.wallet.signAllTransactions(transactions, options);
       },
 
       signMessage(message: Uint8Array): Promise<Uint8Array> {
@@ -118,11 +120,11 @@ export function useCherryWallet(): UseCherryWalletResult {
         return app.wallet.signMessage(message);
       },
 
-      signAndSendTransaction(transaction: unknown): Promise<string> {
+      signAndSendTransaction(transaction: unknown, options?: CherryTransactionOptions): Promise<string> {
         if (!app) {
           return Promise.reject(new Error('CherryMiniApp not initialised'));
         }
-        return app.wallet.signAndSendTransaction(transaction);
+        return app.wallet.signAndSendTransaction(transaction, options);
       },
     }),
     // Rebuild only when app / user readiness changes

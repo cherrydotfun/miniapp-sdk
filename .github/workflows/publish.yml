@@ -1,0 +1,65 @@
+# Publishes @cherrydotfun/miniapp-sdk to npm when main carries a version npm
+# does not have yet. Releasing is: bump "version" in package.json, add the
+# CHANGELOG entry, merge to main. A push that does not change the version
+# runs the checks and publishes nothing.
+#
+# Needs the NPM_TOKEN repository secret (an npm automation token with publish
+# rights on @cherrydotfun). Without it the job checks and builds, then says so
+# and stops — it never fails a merge for a missing secret.
+name: Publish SDK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-sdk
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Typecheck, test, build
+        run: npm run typecheck && npm test && npm run build
+
+      - name: Is this version on npm yet?
+        id: version
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "$name@$version is already on npm; nothing to publish."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "$name@$version is new; publishing."
+          fi
+
+      - name: Publish
+        if: steps.version.outputs.publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::warning::NPM_TOKEN is not set; v${{ steps.version.outputs.version }} was built but not published."
+            exit 0
+          fi
+          npm publish --provenance --access public
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"

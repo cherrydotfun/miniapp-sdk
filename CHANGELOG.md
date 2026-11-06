@@ -54,6 +54,15 @@ changes.
   `CherryWalletAdapter` and `getSharedBridge()`; `isTrustedHostOrigin()`,
   `DEFAULT_TRUSTED_HOST_ORIGINS`; `Bridge#hostOrigin`, `#transport`,
   `#ignoredOrigins`, `#configure()`.
+- **Transaction labels.** `wallet.signTransaction` / `signAllTransactions` /
+  `signAndSendTransaction` (and `useCherryWallet()`'s) take `{ label }`; one
+  line in the app's words ("Buy 3 lives") that Cherry's wallet sheet shows
+  under the app's name, beside the amount it decodes itself.
+  `withTransactionLabel(label, fn)` (root, `/react`, `/solana`, `/kit`)
+  labels every signature request made inside `fn`, for wallet-adapter and kit
+  signers. `normalizeTransactionLabel`, `TRANSACTION_LABEL_MAX` (80),
+  `CherryTransactionOptions`. On the wire: an optional `label` param; older
+  hosts ignore it.
 - Test suite (vitest) and `npm test`.
 - Optional peer dependency `@solana/kit` (types only, for the `/kit` helpers).
 - **Context v2 — language, theme, platform, safe area.** `CherryContext` gains
