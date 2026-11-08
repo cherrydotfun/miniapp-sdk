@@ -1428,6 +1428,26 @@ that walks an agent through integrating the SDK into an existing app (see
 "Integrate the Cherry Mini-App SDK into this project" and point it at this
 README.
 
+## 21. Releasing the SDK
+
+Bump `version` in `package.json`, update `CHANGELOG.md`, and push to `main`.
+The `Publish SDK` workflow runs typechecks, tests, and the build, then publishes
+the version if it is not already on npm and creates the matching `v<version>` tag.
+You can also rerun it with GitHub Actions **Run workflow** on `main`.
+
+Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
+with GitHub Actions OIDC; no `NPM_TOKEN` or `NODE_AUTH_TOKEN` secret is needed.
+For `@cherrydotfun/miniapp-sdk`, the npm trusted publisher must match:
+
+- Organization: `cherrydotfun`
+- Repository: `miniapp-sdk`
+- Workflow filename: `publish.yml`
+- Environment: leave empty (the workflow does not use a GitHub environment)
+
+The publishing job uses a GitHub-hosted runner, Node.js 24, npm 11 (OIDC requires
+npm 11.5.1 or newer), and `id-token: write`. Authentication failures fail the job
+so a skipped publication cannot appear successful.
+
 ## License
 
 MIT

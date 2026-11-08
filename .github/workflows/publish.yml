@@ -3,14 +3,12 @@
 # CHANGELOG entry, merge to main. A push that does not change the version
 # runs the checks and publishes nothing.
 #
-# Two jobs, so nothing that runs third-party code holds a credential: `check`
-# installs, tests and builds read-only; `publish` installs with
+# `check` installs, tests and builds read-only; `publish` installs with
 # --ignore-scripts, never keeps the checkout's token, and is the only job with
-# id-token (provenance) and NPM_TOKEN. It runs for main only.
+# id-token (npm trusted publishing and provenance). It runs for main only.
 #
-# Needs the NPM_TOKEN repository secret (an npm automation token with publish
-# rights on @cherrydotfun). Without it the job says so and stops — it never
-# fails a merge for a missing secret.
+# npm must trust cherrydotfun/miniapp-sdk, workflow publish.yml.
+# No npm access token or repository secret is required.
 name: Publish SDK
 
 on:
@@ -34,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
-          node-version: 22
+          node-version: 24
       - run: npm ci
       - name: Typecheck, test, build
         run: npm run typecheck && npm test && npm run build
@@ -45,15 +43,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # the release tag
-      id-token: write # npm provenance
+      id-token: write # npm trusted publishing and provenance
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          node-version: 24
+
+      # OIDC requires npm >= 11.5.1. Do not configure token auth via setup-node.
+      - name: Set up npm for trusted publishing
+        run: npm install --global npm@11
 
       - name: Is this version on npm yet?
         id: version
@@ -75,16 +76,14 @@ jobs:
 
       - name: Publish
         if: steps.version.outputs.publish == 'true'
+        run: npm publish --provenance --access public --ignore-scripts
+
+      - name: Tag release
+        if: steps.version.outputs.publish == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::warning::NPM_TOKEN is not set; v$VERSION was built but not published."
-            exit 0
-          fi
-          npm publish --provenance --access public --ignore-scripts
           git tag "v$VERSION"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "v$VERSION"
