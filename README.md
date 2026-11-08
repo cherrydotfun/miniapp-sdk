@@ -10,7 +10,7 @@ button, no "sign this message to log in", no seed phrase. This README is
 written so that you (or your AI coding agent) can integrate end-to-end from it
 alone.
 
-> Version **0.1.22**. Upgrading from 0.1.21? See [Migration](#19-migration-0121--0122).
+> Version **0.1.24**. Upgrading from 0.1.21? See [Migration](#19-migration-0121--0124). (0.1.22 and 0.1.23 are no longer on npm; 0.1.24 is the same code.)
 > Blink cards in chat have their own guide: [BLINKS.md](./BLINKS.md).
 
 ---
@@ -35,7 +35,7 @@ alone.
 16. [Troubleshooting](#16-troubleshooting)
 17. [API reference](#17-api-reference)
 18. [Bridge protocol (advanced)](#18-bridge-protocol-advanced)
-19. [Migration 0.1.21 → 0.1.22](#19-migration-0121--0122)
+19. [Migration 0.1.21 → 0.1.24](#19-migration-0121--0124)
 20. [AI-assisted integration](#20-ai-assisted-integration)
 
 ---
@@ -1384,7 +1384,7 @@ optional `label` (string, ≤ 80 characters) beside `transaction(s)`. Raw access
 Hosts also append `cherry_lang=<locale>&cherry_theme=<dark|light>` to the app
 URL's query string (existing parameters are kept).
 
-## 19. Migration 0.1.21 → 0.1.22
+## 19. Migration 0.1.21 → 0.1.24
 
 No breaking API changes; review these behaviour changes:
 

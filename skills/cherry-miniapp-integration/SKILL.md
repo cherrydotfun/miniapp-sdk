@@ -3,7 +3,7 @@ name: cherry-miniapp-integration
 description: "Use when integrating @cherrydotfun/miniapp-sdk into a web app so it runs as a Cherry mini-app (inside Cherry's web iframe and mobile WebView) — seamless login via the launch token, backend token verification, Cherry wallet signing, framing headers, wallet-limit/policy error handling, matching Cherry's language/theme/safe area, reading the user's public profile, on-chain attribution (app reference key) and Cherry fee splits, and passing the automated listing test."
 ---
 
-# Cherry Mini-App SDK Integration (v0.1.22)
+# Cherry Mini-App SDK Integration (v0.1.24)
 
 ## Overview
 
