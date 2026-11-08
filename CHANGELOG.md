@@ -4,6 +4,12 @@ All notable changes to `@cherrydotfun/miniapp-sdk`. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/) (0.x: minor = may break, patch = compatible).
 
+## 0.1.24
+
+Republished: 0.1.22 and 0.1.23 are no longer available on npm. Same code as
+0.1.23 (transaction labels, `withTransactionLabel` across entries, stricter
+label cleaning). Install 0.1.24.
+
 ## 0.1.23
 
 ### Fixed
